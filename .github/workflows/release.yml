@@ -1,0 +1,29 @@
+name: Create Extension Release Zip
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Zip Extension Files
+        run: |
+          zip -r gemini-extension.zip . -x "*.git*" ".github/*" "index.html"
+
+      - name: Release Zip Asset to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          files: gemini-extension.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

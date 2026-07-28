@@ -37,9 +37,9 @@
 ## 💻 설치 및 실행 방법 (Installation)
 
 ### 1. 개발자 모드로 로컬 설치 (Load Unpacked)
-1. 이 저장소를 클론(Clone)하거나 ZIP으로 다운로드합니다.
+1. [GitHub Releases](https://github.com/dongqdev/gemini-extension/releases)에서 최신 `gemini-extension.zip` 압축 파일을 다운로드하여 해제합니다. (또는 git clone)
    ```bash
-   git clone https://github.com/your-username/gemini-extension.git
+   git clone https://github.com/dongqdev/gemini-extension.git
    ```
 2. Chrome 브라우저를 열고 `chrome://extensions/` 주소로 이동합니다.
 3. 우측 상단의 **`개발자 모드`** 토글 스위치를 키세요.
