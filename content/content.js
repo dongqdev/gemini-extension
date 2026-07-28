@@ -420,12 +420,14 @@ let pinnedChatIds = {};    // { [folderId]: ["chatId1"] }
 
 // 스토리지로부터 폴더 및 대화 메타데이터 읽기
 function loadFoldersFromStorage() {
-  safeStorageSyncGet(["folders", "customChatTitles", "pinnedChatIds"], (result) => {
-    if (!result.folders || result.folders.length === 0) {
+  safeStorageSyncGet(["folders", "customChatTitles", "pinnedChatIds", "isInitialized"], (result) => {
+    if (result.folders === undefined && !result.isInitialized) {
+      // 최초 1회만 기본 데모 샘플 폴더 주입
       folders = DEFAULT_FOLDERS;
-      safeStorageSyncSet({ folders: DEFAULT_FOLDERS });
+      safeStorageSyncSet({ folders: DEFAULT_FOLDERS, isInitialized: true });
     } else {
-      folders = result.folders;
+      // 사용자가 삭제하여 [] 빈 상태가 되어도 그대로 100% 존중!
+      folders = result.folders || [];
     }
     customChatTitles = result.customChatTitles || {};
     pinnedChatIds = result.pinnedChatIds || {};
@@ -2192,6 +2194,34 @@ function setupChatWidthController() {
   }
 }
 
+function getAllSidebarChats(assignedChatIds = []) {
+  const assignedSet = new Set(assignedChatIds);
+  const links = Array.from(document.querySelectorAll("nav a[href*='/app/'], nav a[href*='/c/'], a[href*='/app/'], a[href*='/c/']"));
+  const chatList = [];
+  const visitedIds = new Set();
+
+  links.forEach(link => {
+    const href = link.getAttribute("href") || link.href || "";
+    const chatId = extractChatIdFromHref(href);
+    if (chatId && !visitedIds.has(chatId) && !assignedSet.has(chatId)) {
+      visitedIds.add(chatId);
+
+      const titleEl = link.querySelector(".conversation-title, .title-text, div[title], span[title]") || link;
+      let text = (titleEl.innerText || titleEl.textContent || "").trim();
+      text = text.replace(/\n/g, " ").split("  ")[0].trim();
+
+      if (text && !text.includes("새 대화") && !text.includes("New chat")) {
+        chatList.push({
+          chatId: chatId,
+          title: text
+        });
+      }
+    }
+  });
+
+  return chatList.slice(0, 100);
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "refreshSelectors") {
     init();
@@ -2200,6 +2230,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     fetchGeminiUsage((info) => {
       sendResponse({ status: "success", data: info });
     });
+    return true;
+  } else if (message.action === "getSidebarChats") {
+    const assignedIds = message.assignedChatIds || [];
+    const chats = getAllSidebarChats(assignedIds);
+    sendResponse({ status: "success", chats: chats });
     return true;
   }
 });

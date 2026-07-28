@@ -44,11 +44,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (weeklyProgress) weeklyProgress.style.width = `${Math.min(100, Math.max(0, weeklyNum))}%`;
     });
 
-    // 팝업 클릭(열림) 시마다 최우선 실시간 동기화 요청!
+    // 팝업 클릭(열림) 시마다 최우선 실시간 동기화 요청 (Gemini 탭 전용 & 에러 가드)
     if (typeof chrome !== "undefined" && chrome.tabs) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs && tabs[0] && tabs[0].id) {
+        if (tabs && tabs[0] && tabs[0].id && tabs[0].url && tabs[0].url.includes("gemini.google.com")) {
           chrome.tabs.sendMessage(tabs[0].id, { action: "refreshUsage" }, (res) => {
+            if (chrome.runtime.lastError) return; // 미수신 에러 무소음 감지
             if (res && res.data) {
               loadUsageStats();
             }
@@ -100,10 +101,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 4. JSON 가져오기 (입력창에 붙여넣기 방식)
+  // 4. JSON 가져오기 (AI 분류 Mappings 및 백업 JSON 모두 스마트 수용!)
   if (btnImportJson) {
     btnImportJson.addEventListener("click", () => {
-      const inputJson = prompt("복사한 백업 JSON 데이터를 여기에 붙여넣으세요 (Ctrl+V):");
+      const inputJson = prompt("복사한 AI 분류 결과 또는 백업 JSON 데이터를 여기에 붙여넣으세요 (Ctrl+V):");
       if (inputJson === null) return; // 취소
 
       const trimmed = inputJson.trim();
@@ -114,7 +115,81 @@ document.addEventListener("DOMContentLoaded", () => {
 
       try {
         const data = JSON.parse(trimmed);
-        if (data && Array.isArray(data.folders)) {
+
+        // A. AI 자동 분류 결과인 경우 (data.mappings 및 선택적 data.newFolders)
+        if (data && Array.isArray(data.mappings)) {
+          chrome.storage.sync.get(["folders"], (result) => {
+            let currentFolders = result.folders || folders || [];
+            const mappings = data.mappings;
+            const newFolders = Array.isArray(data.newFolders) ? data.newFolders : [];
+            let createdFolderCount = 0;
+            let appliedCount = 0;
+
+            // 1. 신규 폴더(newFolders)가 전달된 경우 기존 폴더 트리에 동적 동기화 추가
+            newFolders.forEach(nf => {
+              if (nf.id && nf.name) {
+                const exists = currentFolders.some(f => f.id === nf.id || f.name === nf.name);
+                if (!exists) {
+                  const folderId = nf.id.startsWith("f_") ? nf.id : `f_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+                  const newFolderObj = {
+                    id: folderId,
+                    name: nf.name,
+                    color: nf.color || "#3B82F6",
+                    parentId: nf.parentId || null,
+                    children: [],
+                    chatIds: []
+                  };
+                  currentFolders.push(newFolderObj);
+                  createdFolderCount++;
+
+                  // 부모 폴더(parentId)가 존재하는 경우 부모의 children 배열에도 등록!
+                  if (nf.parentId) {
+                    const parentFolder = currentFolders.find(p => p.id === nf.parentId || p.name === nf.parentId);
+                    if (parentFolder) {
+                      if (!parentFolder.children) parentFolder.children = [];
+                      if (!parentFolder.children.includes(folderId)) {
+                        parentFolder.children.push(folderId);
+                      }
+                      newFolderObj.parentId = parentFolder.id;
+                    }
+                  }
+                }
+              }
+            });
+
+            // 이미 어떠한 폴더에라도 들어있는 chatId 세트 집계 (기존 유저 배치 100% 보존!)
+            const existingAssignedSet = new Set();
+            currentFolders.forEach(f => {
+              if (f.chatIds) {
+                f.chatIds.forEach(cid => existingAssignedSet.add(cid));
+              }
+            });
+
+            // 2. 대화 매핑 적용
+            mappings.forEach(m => {
+              if (m.chatId && m.folderId) {
+                if (!existingAssignedSet.has(m.chatId)) {
+                  // id 또는 name으로 타겟 폴더 탐색
+                  let targetFolder = currentFolders.find(f => f.id === m.folderId || f.name === m.folderId);
+                  if (targetFolder) {
+                    if (!targetFolder.chatIds) targetFolder.chatIds = [];
+                    if (!targetFolder.chatIds.includes(m.chatId)) {
+                      targetFolder.chatIds.push(m.chatId);
+                      existingAssignedSet.add(m.chatId);
+                      appliedCount++;
+                    }
+                  }
+                }
+              }
+            });
+
+            chrome.storage.sync.set({ folders: currentFolders }, () => {
+              alert(`✨ AI 자동 분류 완료!\n신규 폴더 ${createdFolderCount}개 생성 및 미분류 대화 ${appliedCount}개가 지정된 위치로 안전하게 추가 배치되었습니다.`);
+            });
+          });
+        }
+        // B. 전체 폴더 백업 데이터인 경우 (data.folders)
+        else if (data && Array.isArray(data.folders)) {
           folders = data.folders;
           const customChatTitles = data.customChatTitles || {};
 
@@ -122,10 +197,11 @@ document.addEventListener("DOMContentLoaded", () => {
             folders: folders, 
             customChatTitles: customChatTitles 
           }, () => {
-            alert("✅ 폴더 구조가 성공적으로 복원되었습니다!\nGemini 웹페이지를 새로고침(F5)하세요.");
+            alert("✅ 폴더 구조가 성공적으로 복원되었습니다!");
           });
-        } else {
-          alert("⚠️ 올바른 JSON 폴더 백업 데이터 형식이 아닙니다.");
+        } 
+        else {
+          alert("⚠️ 인식할 수 없는 JSON 형식입니다.\nAI 분류 결과('mappings') 또는 백업('folders') 데이터인지 확인해주세요.");
         }
       } catch (err) {
         alert("❌ JSON 파싱 오류: 올바른 JSON 문법인지 확인해주세요.\n" + err.message);
@@ -133,7 +209,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 5. AI 자동 분류 프롬프트 복사
+  // 5. AI 자동 분류 프롬프트 복사 (최상위/하위 폴더 트리 가이드 정밀화!)
   if (btnAiPrompt) {
     btnAiPrompt.addEventListener("click", () => {
       chrome.storage.sync.get(["folders"], (result) => {
@@ -144,32 +220,80 @@ document.addEventListener("DOMContentLoaded", () => {
           parentId: f.parentId
         }));
 
-        const promptText = `너는 나의 웹 브라우저 대화 정리를 돕는 AI 분류 매니저야.
-내가 너에게 대화 목록을 JSON으로 줄 테니, 아래 명시된 나의 폴더 카테고리 트리 구조(JSON)를 바탕으로 각 대화(chatId)가 어떤 폴더(folderId)에 매핑되어야 하는지 매핑 목록 JSON을 생성해 줘.
+        // 이미 어떠한 폴더에라도 들어있는 대화 ID 수집
+        const assignedChatIds = [];
+        currentFolders.forEach(f => {
+          if (f.chatIds && Array.isArray(f.chatIds)) {
+            f.chatIds.forEach(id => assignedChatIds.push(id));
+          }
+        });
 
-[나의 폴더 트리 구조]
+        const copyPromptWithChats = (chatList) => {
+          const chatsText = Array.isArray(chatList) && chatList.length > 0 
+            ? JSON.stringify(chatList, null, 2)
+            : "[]";
+
+          const promptText = `너는 나의 웹 브라우저 대화 정리를 돕는 AI 스마트 분류 매니저야.
+아래 제공되는 [현재 나의 폴더 트리 구조]와 [분류할 미분류 최근 대화 목록]을 바탕으로 대화를 카테고리별로 정돈해 줘.
+
+[작업 지침]
+1. 이미 분류된 대화는 포함되어 있지 않아. 미분류 대화들만 새로 정리해 줘.
+2. 기존 폴더 구조 중 적합한 카테고리가 있다면 해당 기존 폴더(id)로 대화를 매핑해 줘.
+3. 기존 폴더 중 마땅한 카테고리가 없다면, 주제에 맞는 "신규 폴더(newFolders)"를 필요한 만큼 새로 생성해 줘.
+   - 최상위 독립 폴더로 만들고 싶다면 parentId: null 로 명시해.
+   - 특정 기존 폴더의 하위 서브폴더로 넣고 싶다면 parentId: "해당기존폴더ID" 로 명시해.
+
+[현재 나의 폴더 트리 구조]
 ${JSON.stringify(folderSchema, null, 2)}
 
 [요구 결과 JSON 명세]
-아래 Schema 형태로만 응답하고, 마크다운 코드 블록이나 기타 텍스트 설명 없이 순수 JSON만 반환해 줘.
+아래 Schema 형태로만 응답하고, 마크다운 코드 블록이나 기타 설명 텍스트 없이 오직 순수 JSON 데이터만 반환해 줘.
 \`\`\`json
 {
+  "newFolders": [
+    { "id": "f_new_1", "name": "신규폴더명", "color": "#3B82F6", "parentId": null }
+  ],
   "mappings": [
-    { "chatId": "대화ID", "folderId": "가장적합한폴더ID" }
+    { "chatId": "대화ID", "folderId": "기존폴더ID_또는_f_new_1" }
   ]
 }
 \`\`\`
 
-분류할 대화 목록은 다음과 같아:
-[여기에 제미나이 사이드바에서 복사한 대화 목록 JSON을 붙여넣으세요]`;
+[분류할 미분류 최근 대화 목록]
+${chatsText}`;
 
-        navigator.clipboard.writeText(promptText)
-          .then(() => {
-            alert("AI 자동 분류 프롬프트가 클립보드에 복사되었습니다!\n제미나이 대화창에 붙여넣고 대화 목록 JSON을 추가하여 실행해 보세요.");
-          })
-          .catch(err => {
-            console.error("클립보드 복사 실패:", err);
+          navigator.clipboard.writeText(promptText)
+            .then(() => {
+              const countStr = Array.isArray(chatList) ? chatList.length : 0;
+              if (countStr === 0) {
+                alert("✨ 현재 사이드바의 모든 최근 대화가 이미 폴더에 분류되어 있습니다!\n기존 폴더 트리 프롬프트가 복사되었습니다.");
+              } else {
+                alert(`✨ 아직 분류되지 않은 미분류 최근 대화 ${countStr}개 목록이 100% 자동으로 포함된 AI 분류 프롬프트가 복사되었습니다!\n\nGemini 대화창에 바로 붙여넣기(Ctrl+V) 하시면 AI가 신규 폴더 생성 및 대화 분류를 즉시 수행합니다.`);
+              }
+            })
+            .catch(err => {
+              alert("클립보드 복사 실패: " + err.message);
+            });
+        };
+
+        if (typeof chrome !== "undefined" && chrome.tabs) {
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs && tabs[0] && tabs[0].id && tabs[0].url && tabs[0].url.includes("gemini.google.com")) {
+              chrome.tabs.sendMessage(tabs[0].id, { action: "getSidebarChats", assignedChatIds: assignedChatIds }, (res) => {
+                if (chrome.runtime.lastError) {
+                  copyPromptWithChats([]);
+                  return;
+                }
+                const fetchedChats = (res && res.chats) ? res.chats : [];
+                copyPromptWithChats(fetchedChats);
+              });
+            } else {
+              copyPromptWithChats([]);
+            }
           });
+        } else {
+          copyPromptWithChats([]);
+        }
       });
     });
   }
