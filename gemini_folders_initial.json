@@ -1,0 +1,44 @@
+{
+  "folders": [
+    {
+      "id": "folder_work",
+      "name": "업무",
+      "color": "#4A90E2",
+      "parentId": null,
+      "children": ["folder_gsitm", "folder_uemura", "folder_ai"],
+      "chatIds": []
+    },
+    {
+      "id": "folder_gsitm",
+      "name": "GSITM",
+      "color": "#4A90E2",
+      "parentId": "folder_work",
+      "children": [],
+      "chatIds": ["chat_gsitm_1", "chat_gsitm_2", "chat_gsitm_3"]
+    },
+    {
+      "id": "folder_uemura",
+      "name": "우에무라",
+      "color": "#4A90E2",
+      "parentId": "folder_work",
+      "children": ["folder_biz_plan"],
+      "chatIds": []
+    },
+    {
+      "id": "folder_biz_plan",
+      "name": "사업계획",
+      "color": "#4A90E2",
+      "parentId": "folder_uemura",
+      "children": [],
+      "chatIds": ["chat_cost_by_product", "chat_activity_view", "chat_activity_reg"]
+    },
+    {
+      "id": "folder_ai",
+      "name": "AI",
+      "color": "#4A90E2",
+      "parentId": "folder_work",
+      "children": [],
+      "chatIds": ["chat_ai_1"]
+    }
+  ]
+}

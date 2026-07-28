@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini Extension Helper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 헤더 -->
+    <header class="app-header">
+      <div class="logo-area">
+        <img src="../icons/logo.png" class="logo-img" alt="logo" style="width: 24px; height: 24px; border-radius: 6px; object-fit: contain;">
+        <h1>Gemini Helper</h1>
+      </div>
+      <span class="version" id="plan-badge" style="background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px; font-weight: 700; color: #50e3c2;">PRO</span>
+    </header>
+
+    <!-- 테마 설정 카드 -->
+    <section class="card theme-section">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <span class="section-title" style="margin-bottom: 0; white-space: nowrap;">🎨 테마 설정</span>
+        <div class="theme-toggle-group" id="theme-toggle-group">
+          <button class="theme-btn active" data-theme="system" title="크롬/시스템 설정에 따름">🖥️ 시스템</button>
+          <button class="theme-btn" data-theme="dark" title="다크 모드">🌙 다크</button>
+          <button class="theme-btn" data-theme="light" title="라이트 모드">☀️ 라이트</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 실시간 Gemini 사용량 트래커 (/usage 연동) -->
+    <section class="card usage-section">
+      <h2 class="section-title">Gemini 사용량 정보 (/usage)</h2>
+      <div class="usage-grid">
+        <div class="usage-box">
+          <div class="usage-label">Current Usage</div>
+          <div class="usage-value" id="current-usage">1%</div>
+          <div class="progress-container">
+            <div class="progress-bar" id="current-progress" style="width: 1%"></div>
+          </div>
+          <div class="usage-subtext" id="current-usage-sub" style="font-size: 10.5px; opacity: 0.75; margin-top: 5px;">오후 2:23에 초기화</div>
+        </div>
+        <div class="usage-box">
+          <div class="usage-label">Weekly Limit</div>
+          <div class="usage-value" id="weekly-usage">3%</div>
+          <div class="progress-container">
+            <div class="progress-bar weekly" id="weekly-progress" style="width: 3%"></div>
+          </div>
+          <div class="usage-subtext" id="weekly-usage-sub" style="font-size: 10.5px; opacity: 0.75; margin-top: 5px;">7월 29일 오전 10:23에 초기화</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 대화창 너비 설정 카드 -->
+    <section class="card width-section">
+      <h2 class="section-title">대화창 너비 설정</h2>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px;">
+        <span style="font-size: 11.5px; color: var(--text-muted);">↔️ 대화창 폭:</span>
+        <input type="range" id="popup-width-range" min="750" max="1800" step="25" value="960" style="flex-grow: 1; accent-color: #6366f1; cursor: pointer;">
+        <span id="popup-width-val" style="font-size: 11px; font-weight: 700; color: #50e3c2; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 6px;">960px</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; gap: 4px;">
+        <button class="btn btn-outline btn-xs popup-preset-btn" data-width="750px">750px</button>
+        <button class="btn btn-outline btn-xs popup-preset-btn" data-width="850px">850px</button>
+        <button class="btn btn-outline btn-xs popup-preset-btn" data-width="1100px">1100px</button>
+        <button class="btn btn-outline btn-xs popup-preset-btn" data-width="1400px">1400px</button>
+        <button class="btn btn-outline btn-xs popup-preset-btn" data-width="100%">100% Wide</button>
+      </div>
+    </section>
+
+    <!-- 백업 및 AI 자동 정리 도구 (폴더 관리는 사이드바에서 일임) -->
+    <section class="card tools-section">
+      <h2 class="section-title">데이터 백업 & AI 자동 정리</h2>
+      <div class="tools-grid">
+        <button id="btn-export-json" class="btn btn-outline" title="폴더 구조 백업">JSON 내보내기</button>
+        <button id="btn-import-json" class="btn btn-outline" title="폴더 구조 복원">JSON 가져오기</button>
+        <input type="file" id="file-import-json" class="hidden" accept=".json">
+      </div>
+      <button id="btn-ai-prompt" class="btn btn-gradient-purple">
+        <span class="icon">✨</span> AI 폴더 자동 분류 프롬프트 복사
+      </button>
+      <div class="prompt-hint">
+        * 폴더 관리는 Gemini 웹 사이드바에서 직접 실행하실 수 있습니다.
+      </div>
+    </section>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

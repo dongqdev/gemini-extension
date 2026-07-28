@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini Extension (제미나이 폴더 및 내비게이션 헬퍼)",
+  "version": "1.0.0",
+  "description": "제미나이(Gemini) 대화 관리 폴더, 목차 내비게이션, 대화 내보내기 및 와이드 모드 제공 확장 프로그램",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "libs/html2canvas.min.js",
+        "libs/turndown.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
