@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Extension (제미나이 폴더 및 내비게이션 헬퍼)",
+  "name": "Gemini Extension (제미나이 폴더 및 사용량 헬퍼)",
   "version": "1.0.0",
-  "description": "제미나이(Gemini) 대화 관리 폴더, 목차 내비게이션, 대화 내보내기 및 와이드 모드 제공 확장 프로그램",
+  "description": "제미나이(Gemini) 대화 관리 폴더, 실시간 사용량 위젯, 대화 내보내기 및 대화창 너비 제어 확장 프로그램",
   "permissions": [
     "storage"
   ],

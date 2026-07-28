@@ -120,7 +120,6 @@ function setupResizableSplitter() {
       splitter.className = "gemini-drag-handle";
       splitter.innerHTML = `<div class="handle-line"></div>`;
 
-      inputArea.style.position = "relative";
       inputArea.insertBefore(splitter, inputArea.firstChild);
 
       let isDragging = false;
@@ -1167,148 +1166,534 @@ function saveFoldersToSync() {
 }
 
 /* ==========================================
-   D. 대화 내보내기(Export) 버튼 및 MutationObserver
+   D. 대화 내보내기(Export) 버튼 및 MutationObserver (성능 최적화)
    ========================================== */
+let exportInjectTimeout = null;
+
 function setupMutationObserver() {
   if (mutationObserver) mutationObserver.disconnect();
 
-  mutationObserver = new MutationObserver((mutations) => {
-    mutations.forEach(mutation => {
-      if (mutation.addedNodes && mutation.addedNodes.length > 0) {
-        mutation.addedNodes.forEach(node => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            injectExportButtons(node);
-          }
-        });
-      }
-    });
+  mutationObserver = new MutationObserver(() => {
+    // 스크롤 및 DOM 변형 폭주 방지를 위한 250ms 디바운스
+    if (exportInjectTimeout) clearTimeout(exportInjectTimeout);
+    exportInjectTimeout = setTimeout(() => {
+      injectExportButtons(document.body);
+    }, 250);
   });
 
-  mutationObserver.observe(document.body, { childList: true, subtree: true });
+  const targetContainer = document.querySelector("main") || document.body;
+  mutationObserver.observe(targetContainer, { childList: true, subtree: true });
   injectExportButtons(document.body);
 }
 
+function isGeminiLightTheme() {
+  try {
+    const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+    if (bodyBg && bodyBg.includes("rgb")) {
+      const match = bodyBg.match(/\d+/g);
+      if (match && match.length >= 3) {
+        const r = parseInt(match[0], 10);
+        const g = parseInt(match[1], 10);
+        const b = parseInt(match[2], 10);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        if (brightness > 130) return true;
+      }
+    }
+  } catch (e) {}
+
+  return document.body.classList.contains("light-theme") || 
+         document.documentElement.getAttribute("data-theme") === "light" ||
+         document.body.getAttribute("data-theme") === "light" ||
+         window.matchMedia("(prefers-color-scheme: light)").matches;
+}
+
 function injectExportButtons(container) {
-  const modelResponses = container.querySelectorAll(selectors.modelResponseText);
-  
-  modelResponses.forEach(res => {
-    if (res.querySelector(".gemini-export-btn-container") || res.nextElementSibling?.classList.contains("gemini-export-btn-container")) return;
+  // 답변을 나타내는 최상위 래퍼 노드들만 선택 (자식 노드 다중 선택 방지)
+  const targetBlocks = container.querySelectorAll(".model-response-container, message-content, div.model-response-container, .response-container");
+  const isLight = isGeminiLightTheme();
+
+  targetBlocks.forEach(block => {
+    // 1) 이미 해당 블록이나 자식에 버튼이 존재하거나 data-gemini-export-injected 마킹이 있으면 무조건 스킵
+    if (block.getAttribute("data-gemini-export-injected") === "true" || block.querySelector(".gemini-export-btn-container")) {
+      return;
+    }
+
+    // 2) 조상 요소에 이미 버튼이 포함된 답변 블록이 있으면 스킵
+    const ancestor = block.parentElement ? block.parentElement.closest("[data-gemini-export-injected='true'], .model-response-container, message-content") : null;
+    if (ancestor && ancestor.querySelector(".gemini-export-btn-container")) {
+      return;
+    }
+
+    block.setAttribute("data-gemini-export-injected", "true");
 
     const btnContainer = document.createElement("div");
     btnContainer.className = "gemini-export-btn-container";
+    if (isLight) {
+      btnContainer.setAttribute("data-theme", "light");
+    } else {
+      btnContainer.setAttribute("data-theme", "dark");
+    }
+
     btnContainer.innerHTML = `
-      <button class="gemini-export-btn btn-png" title="대화 이미지 저장">PNG</button>
-      <button class="gemini-export-btn btn-md" title="대화 마크다운 저장">MD</button>
-      <button class="gemini-export-btn btn-json" title="대화 JSON 저장">JSON</button>
+      <span class="gemini-export-label">Export:</span>
+      <!-- <button class="gemini-export-btn btn-img" title="대화 카드 이미지 저장">IMAGE</button> -->
+      <button class="gemini-export-btn btn-md" title="답변 마크다운(.md) 저장">MD</button>
+      <button class="gemini-export-btn btn-json" title="질문/답변 JSON 구조 저장">JSON</button>
     `;
 
-    res.appendChild(btnContainer);
+    // 답변 본문 텍스트(.markdown) 직후 또는 유틸리티 바 전에 깔끔하게 1개만 주입
+    const markdownContent = block.querySelector(".markdown, .model-response");
+    if (markdownContent && markdownContent.parentNode === block) {
+      block.insertBefore(btnContainer, markdownContent.nextSibling);
+    } else {
+      block.appendChild(btnContainer);
+    }
 
-    btnContainer.querySelector(".btn-png").addEventListener("click", (e) => {
+    const btnMd = btnContainer.querySelector(".btn-md");
+    const btnJson = btnContainer.querySelector(".btn-json");
+
+    btnMd.addEventListener("click", (e) => {
       e.stopPropagation();
-      exportToPNG(res);
+      exportToMD(block, btnMd);
     });
 
-    btnContainer.querySelector(".btn-md").addEventListener("click", (e) => {
+    btnJson.addEventListener("click", (e) => {
       e.stopPropagation();
-      exportToMD(res);
-    });
-
-    btnContainer.querySelector(".btn-json").addEventListener("click", (e) => {
-      e.stopPropagation();
-      exportToJSON(res);
+      exportToJSON(block, btnJson);
     });
   });
 }
 
-function exportToMD(responseEl) {
-  const clone = responseEl.cloneNode(true);
-  const btnContainer = clone.querySelector(".gemini-export-btn-container");
-  if (btnContainer) btnContainer.remove();
+function openImageExportModal(responseEl, btn) {
+  const oldModal = document.getElementById("gemini-export-modal");
+  if (oldModal) oldModal.remove();
 
-  if (typeof TurndownService !== "undefined") {
-    const turndownService = new TurndownService({
-      headingStyle: "atx",
-      codeBlockStyle: "fenced"
+  const isLight = isGeminiLightTheme();
+
+  const modalBackdrop = document.createElement("div");
+  modalBackdrop.id = "gemini-export-modal";
+  modalBackdrop.className = "gemini-export-modal-backdrop";
+
+  modalBackdrop.innerHTML = `
+    <div class="gemini-export-modal-card ${isLight ? 'data-theme="light"' : ''}">
+      <div class="gemini-modal-header">
+        <h3>🖼️ 대화 이미지 저장 방식 선택</h3>
+        <button class="gemini-modal-close-btn">&times;</button>
+      </div>
+      <div class="gemini-modal-body">
+        <div class="gemini-option-card" data-mode="mobile">
+          <div class="icon">📱</div>
+          <div class="info">
+            <div class="title">모바일용 카드 (450px)</div>
+            <div class="desc">카카오톡, 인스타그램, 스마트폰 화면 공유에 최적화된 슬림 카드</div>
+          </div>
+        </div>
+        <div class="gemini-option-card" data-mode="pc">
+          <div class="icon">💻</div>
+          <div class="info">
+            <div class="title">PC/데스크탑용 카드 (800px)</div>
+            <div class="desc">블로그, 노션 문서 작성 및 PC 화면에 최적화된 와이드 카드</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modalBackdrop);
+
+  const closeBtn = modalBackdrop.querySelector(".gemini-modal-close-btn");
+  closeBtn.addEventListener("click", () => modalBackdrop.remove());
+
+  modalBackdrop.addEventListener("click", (e) => {
+    if (e.target === modalBackdrop) modalBackdrop.remove();
+  });
+
+  const optionCards = modalBackdrop.querySelectorAll(".gemini-option-card");
+  optionCards.forEach((card) => {
+    card.addEventListener("click", () => {
+      const mode = card.getAttribute("data-mode");
+      const targetWidth = mode === "mobile" ? 450 : 800;
+      modalBackdrop.remove();
+      exportToPNGByWidth(responseEl, btn, targetWidth);
     });
-    
-    const markdown = turndownService.turndown(clone.innerHTML);
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-    downloadBlob(blob, `gemini_chat_${Date.now()}.md`);
-  } else {
-    alert("Markdown 변환 라이브러리를 로드하지 못했습니다.");
-  }
+  });
 }
 
-function exportToPNG(responseEl) {
-  const btnContainer = responseEl.querySelector(".gemini-export-btn-container");
-  if (btnContainer) btnContainer.style.display = "none";
+function exportToPNGByWidth(responseEl, btn, targetWidth = 720) {
+  const originalHTML = btn ? btn.innerHTML : "IMAGE";
+  setBtnLoading(btn, true, originalHTML);
 
-  if (typeof html2canvas !== "undefined") {
-    html2canvas(responseEl, {
-      backgroundColor: "#1e1e2f",
-      useCORS: true,
-      scale: 2
-    }).then(canvas => {
-      if (btnContainer) btnContainer.style.display = "flex";
-
-      canvas.toBlob(blob => {
-        downloadBlob(blob, `gemini_screenshot_${Date.now()}.png`);
-        try {
-          const item = new ClipboardItem({ "image/png": blob });
-          navigator.clipboard.write([item]).then(() => {
-            console.log("Copied to clipboard successfully.");
-          });
-        } catch (err) {
-          console.log("Clipboard write blocked:", err);
+  setTimeout(async () => {
+    try {
+      // 1) 질문(User Prompt) 텍스트 추출
+      let parent = responseEl.parentElement;
+      let questionText = "";
+      while (parent && parent !== document.body) {
+        const qNode = parent.querySelector(selectors.userPromptText);
+        if (qNode) {
+          questionText = (qNode.innerText || qNode.textContent || "").trim();
+          break;
         }
-      }, "image/png");
-    }).catch(err => {
-      if (btnContainer) btnContainer.style.display = "flex";
-      alert("이미지 캡처 중 오류가 발생했습니다: " + err.message);
+        parent = parent.parentElement;
+      }
+
+      // 2) 답변(AI Response) 본문을 TurndownService로 순수 마크다운 변환!
+      const responseClone = responseEl.cloneNode(true);
+      const btnContainer = responseClone.querySelector(".gemini-export-btn-container");
+      if (btnContainer) btnContainer.remove();
+
+      const isLight = isGeminiLightTheme();
+      let formattedBodyHTML = responseClone.innerHTML;
+
+      if (typeof TurndownService !== "undefined") {
+        const turndownService = new TurndownService({
+          headingStyle: "atx",
+          codeBlockStyle: "fenced"
+        });
+        const pureMarkdown = turndownService.turndown(responseClone.innerHTML);
+        formattedBodyHTML = renderMarkdownToPrettyHTML(pureMarkdown, isLight);
+      }
+
+      const nowStr = new Date().toLocaleString("ko-KR");
+      const modeLabel = targetWidth <= 500 ? "Mobile Card" : "PC Wide Card";
+
+      // 3) 오프스크린 마크다운 카드 DOM 명시적 생성
+      const offscreenCard = document.createElement("div");
+      offscreenCard.id = "gemini-offscreen-export-card";
+      offscreenCard.style.cssText = `
+        position: fixed;
+        left: -9999px;
+        top: 0;
+        width: ${targetWidth}px;
+        padding: 22px;
+        border-radius: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        box-sizing: border-box;
+        z-index: -9999;
+        ${isLight ? 
+          "background: #ffffff; color: #0f172a; border: 1.5px solid #cbd5e1; box-shadow: 0 10px 30px rgba(0,0,0,0.08);" : 
+          "background: #111422; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 10px 30px rgba(0,0,0,0.5);"
+        }
+      `;
+
+      offscreenCard.innerHTML = `
+        <!-- Card Header -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid ${isLight ? '#e2e8f0' : 'rgba(255,255,255,0.12)'};">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background: #6366f1;"></div>
+            <span style="font-weight: 800; font-size: 12.5px; color: ${isLight ? '#6366f1' : '#a5b4fc'}; letter-spacing: 0.5px;">Gemini Helper (${modeLabel})</span>
+          </div>
+          <span style="font-size: 11px; color: ${isLight ? '#64748b' : '#94a3b8'};">${nowStr}</span>
+        </div>
+
+        <!-- User Question Box -->
+        ${questionText ? `
+        <div style="background: ${isLight ? '#f1f5f9' : 'rgba(255,255,255,0.05)'}; border: 1px solid ${isLight ? '#cbd5e1' : 'rgba(255,255,255,0.1)'}; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 700; color: ${isLight ? '#475569' : '#94a3b8'}; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">👤 User</div>
+          <div style="font-size: 13px; font-weight: 600; line-height: 1.5; color: ${isLight ? '#0f172a' : '#f8fafc'}; white-space: pre-wrap; word-break: break-word;">${escapeHTML(questionText)}</div>
+        </div>
+        ` : ''}
+
+        <!-- Gemini Answer Markdown Card Box -->
+        <div style="background: ${isLight ? '#ffffff' : 'transparent'}; border-radius: 10px;">
+          <div style="font-size: 11px; font-weight: 700; color: ${isLight ? '#6366f1' : '#a5b4fc'}; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">✨ Gemini</div>
+          <div class="gemini-offscreen-body" style="font-size: 13px; line-height: 1.6; word-break: break-word;">
+            ${formattedBodyHTML}
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(offscreenCard);
+
+      // 4) Voyager급 SVG foreignObject 초고속 GPU 렌더링 시도 및 html2canvas fallback
+      const svgData = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${offscreenCard.offsetHeight || 600}">
+          <foreignObject width="100%" height="100%">
+            ${offscreenCard.outerHTML}
+          </foreignObject>
+        </svg>
+      `;
+
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth * 1.5;
+        canvas.height = (offscreenCard.offsetHeight || 600) * 1.5;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(1.5, 1.5);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        offscreenCard.remove();
+
+        canvas.toBlob((blob) => {
+          downloadBlob(blob, `gemini_chat_${targetWidth}px_${Date.now()}.png`);
+          try {
+            const item = new ClipboardItem({ "image/png": blob });
+            navigator.clipboard.write([item]);
+          } catch (err) {}
+          setBtnLoading(btn, false, originalHTML);
+        }, "image/png");
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        if (typeof html2canvas !== "undefined") {
+          html2canvas(offscreenCard, { scale: 1.5, useCORS: true }).then(canvas => {
+            offscreenCard.remove();
+            canvas.toBlob(blob => {
+              downloadBlob(blob, `gemini_chat_${targetWidth}px_${Date.now()}.png`);
+              try {
+                const item = new ClipboardItem({ "image/png": blob });
+                navigator.clipboard.write([item]);
+              } catch (err) {}
+              setBtnLoading(btn, false, originalHTML);
+            }, "image/png");
+          }).catch(() => {
+            offscreenCard.remove();
+            setBtnLoading(btn, false, originalHTML);
+          });
+        } else {
+          offscreenCard.remove();
+          setBtnLoading(btn, false, originalHTML);
+        }
+      };
+
+      img.src = url;
+
+    } catch (err) {
+      alert("오프스크린 마크다운 이미지 처리 중 오류가 발생했습니다: " + err.message);
+      setBtnLoading(btn, false, originalHTML);
+    }
+  }, 50);
+}
+
+function renderMarkdownToPrettyHTML(mdText, isLight) {
+  if (!mdText) return "";
+  let html = mdText
+    .replace(/```([\s\S]*?)```/g, (match, p1) => {
+      const codeLines = p1.trim();
+      return `<pre style="background: ${isLight ? '#f1f5f9' : '#0f172a'}; color: ${isLight ? '#0f172a' : '#f8fafc'}; border: 1px solid ${isLight ? '#cbd5e1' : 'rgba(255,255,255,0.15)'}; border-radius: 8px; padding: 12px; font-family: Consolas, Monaco, monospace; font-size: 12px; overflow-x: auto; margin: 10px 0;"><code>${escapeHTML(codeLines)}</code></pre>`;
+    })
+    .replace(/`([^`]+)`/g, `<code style="background: ${isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)'}; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 12px;">$1</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, `<strong>$1</strong>`)
+    .replace(/\n/g, "<br>");
+  return html;
+}
+
+function escapeHTML(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function setBtnLoading(btn, isLoading, originalHTML) {
+  if (!btn) return;
+  const container = btn.closest(".gemini-export-btn-container");
+  const allBtns = container ? container.querySelectorAll(".gemini-export-btn") : [btn];
+
+  if (isLoading) {
+    allBtns.forEach((b) => {
+      b.disabled = true;
     });
+    btn.innerHTML = `<span class="gemini-btn-spinner"></span> <span>생성 중...</span>`;
   } else {
-    if (btnContainer) btnContainer.style.display = "flex";
-    alert("html2canvas 라이브러리를 로드하지 못했습니다.");
+    allBtns.forEach((b) => {
+      b.disabled = false;
+    });
+    btn.innerHTML = originalHTML;
   }
 }
 
-function exportToJSON(responseEl) {
-  let parent = responseEl.parentElement;
-  let questionText = "Unknown User Prompt";
-  
-  while (parent && parent !== document.body) {
-    const qNode = parent.querySelector(selectors.userPromptText);
-    if (qNode) {
-      questionText = qNode.innerText || qNode.textContent;
-      break;
-    }
-    parent = parent.parentElement;
-  }
+function exportToMD(responseEl, btn) {
+  const originalHTML = btn ? btn.innerHTML : "MD";
+  setBtnLoading(btn, true, originalHTML);
 
-  const clone = responseEl.cloneNode(true);
-  const btnContainer = clone.querySelector(".gemini-export-btn-container");
-  if (btnContainer) btnContainer.remove();
-  const answerText = clone.innerText || clone.textContent;
+  setTimeout(() => {
+    try {
+      const clone = responseEl.cloneNode(true);
+      const btnContainer = clone.querySelector(".gemini-export-btn-container");
+      if (btnContainer) btnContainer.remove();
 
-  const chatJSON = {
-    chatId: "chat_" + Date.now(),
-    title: questionText.substring(0, 30),
-    createdAt: new Date().toISOString(),
-    messages: [
-      {
-        role: "user",
-        content: questionText.trim()
-      },
-      {
-        role: "assistant",
-        content: answerText.trim()
+      if (typeof TurndownService !== "undefined") {
+        const turndownService = new TurndownService({
+          headingStyle: "atx",
+          codeBlockStyle: "fenced"
+        });
+        
+        const markdown = turndownService.turndown(clone.innerHTML);
+        const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+        downloadBlob(blob, `gemini_chat_${Date.now()}.md`);
+      } else {
+        alert("Markdown 변환 라이브러리를 로드하지 못했습니다.");
       }
-    ]
-  };
+    } catch (err) {
+      alert("마크다운 변환 중 오류가 발생했습니다: " + err.message);
+    } finally {
+      setBtnLoading(btn, false, originalHTML);
+    }
+  }, 100);
+}
 
-  const blob = new Blob([JSON.stringify(chatJSON, null, 2)], { type: "application/json;charset=utf-8" });
-  downloadBlob(blob, `gemini_chat_${Date.now()}.json`);
+function exportToPNG(responseEl, btn) {
+  const originalHTML = btn ? btn.innerHTML : "PNG";
+  setBtnLoading(btn, true, originalHTML);
+
+  setTimeout(() => {
+    try {
+      if (typeof html2canvas === "undefined") {
+        alert("html2canvas 라이브러리를 로드하지 못했습니다.");
+        setBtnLoading(btn, false, originalHTML);
+        return;
+      }
+
+      // 1) 질문(User Prompt) 텍스트 추출
+      let parent = responseEl.parentElement;
+      let questionText = "";
+      while (parent && parent !== document.body) {
+        const qNode = parent.querySelector(selectors.userPromptText);
+        if (qNode) {
+          questionText = (qNode.innerText || qNode.textContent || "").trim();
+          break;
+        }
+        parent = parent.parentElement;
+      }
+
+      // 2) 답변(AI Response) 복제 및 내보내기 버튼 제거
+      const responseClone = responseEl.cloneNode(true);
+      const btnContainer = responseClone.querySelector(".gemini-export-btn-container");
+      if (btnContainer) btnContainer.remove();
+
+      const isLight = isGeminiLightTheme();
+
+      // 3) 초고속 렌더링용 오프스크린 카드 DOM 생성 (700px 슬림 카드)
+      const offscreenCard = document.createElement("div");
+      offscreenCard.id = "gemini-offscreen-export-card";
+      offscreenCard.style.cssText = `
+        position: fixed;
+        left: -9999px;
+        top: 0;
+        width: 720px;
+        padding: 24px;
+        border-radius: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        box-sizing: border-box;
+        z-index: -9999;
+        ${isLight ? 
+          "background: #ffffff; color: #0f172a; border: 1.5px solid #cbd5e1; box-shadow: 0 10px 30px rgba(0,0,0,0.08);" : 
+          "background: #111422; color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 10px 30px rgba(0,0,0,0.5);"
+        }
+      `;
+
+      const nowStr = new Date().toLocaleString("ko-KR");
+
+      offscreenCard.innerHTML = `
+        <!-- Card Header -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid ${isLight ? '#e2e8f0' : 'rgba(255,255,255,0.12)'};">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 10px; height: 10px; border-radius: 50%; background: #6366f1;"></div>
+            <span style="font-weight: 800; font-size: 13px; color: ${isLight ? '#6366f1' : '#a5b4fc'}; letter-spacing: 0.5px;">Gemini Helper Export</span>
+          </div>
+          <span style="font-size: 11px; color: ${isLight ? '#64748b' : '#94a3b8'};">${nowStr}</span>
+        </div>
+
+        <!-- User Question Box (질문이 있는 경우) -->
+        ${questionText ? `
+        <div style="background: ${isLight ? '#f1f5f9' : 'rgba(255,255,255,0.05)'}; border: 1px solid ${isLight ? '#cbd5e1' : 'rgba(255,255,255,0.1)'}; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;">
+          <div style="font-size: 11px; font-weight: 700; color: ${isLight ? '#475569' : '#94a3b8'}; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">👤 User</div>
+          <div style="font-size: 13.5px; font-weight: 600; line-height: 1.5; color: ${isLight ? '#0f172a' : '#f8fafc'}; white-space: pre-wrap; word-break: break-word;">${questionText}</div>
+        </div>
+        ` : ''}
+
+        <!-- Gemini Answer Box -->
+        <div style="background: ${isLight ? '#ffffff' : 'transparent'}; border-radius: 10px;">
+          <div style="font-size: 11px; font-weight: 700; color: ${isLight ? '#6366f1' : '#a5b4fc'}; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">✨ Gemini</div>
+          <div class="gemini-offscreen-body" style="font-size: 13.5px; line-height: 1.6; word-break: break-word;">
+            ${responseClone.innerHTML}
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(offscreenCard);
+
+      // 4) 오프스크린 720px 카드만 초고속 html2canvas 렌더링 (0.1초 Instant)
+      html2canvas(offscreenCard, {
+        backgroundColor: null,
+        useCORS: true,
+        scale: 1.5,
+        logging: false,
+        imageTimeout: 0
+      }).then(canvas => {
+        offscreenCard.remove();
+
+        canvas.toBlob(blob => {
+          downloadBlob(blob, `gemini_chat_${Date.now()}.png`);
+          try {
+            const item = new ClipboardItem({ "image/png": blob });
+            navigator.clipboard.write([item]);
+          } catch (err) {}
+          setBtnLoading(btn, false, originalHTML);
+        }, "image/png");
+      }).catch(err => {
+        offscreenCard.remove();
+        alert("이미지 캡처 중 오류가 발생했습니다: " + err.message);
+        setBtnLoading(btn, false, originalHTML);
+      });
+    } catch (err) {
+      alert("오프스크린 이미지 처리 중 오류가 발생했습니다: " + err.message);
+      setBtnLoading(btn, false, originalHTML);
+    }
+  }, 50);
+}
+
+function exportToJSON(responseEl, btn) {
+  const originalHTML = btn ? btn.innerHTML : "JSON";
+  setBtnLoading(btn, true, originalHTML);
+
+  setTimeout(() => {
+    try {
+      let parent = responseEl.parentElement;
+      let questionText = "Unknown User Prompt";
+      
+      while (parent && parent !== document.body) {
+        const qNode = parent.querySelector(selectors.userPromptText);
+        if (qNode) {
+          questionText = qNode.innerText || qNode.textContent;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+
+      const clone = responseEl.cloneNode(true);
+      const btnContainer = clone.querySelector(".gemini-export-btn-container");
+      if (btnContainer) btnContainer.remove();
+      const answerText = clone.innerText || clone.textContent;
+
+      const chatJSON = {
+        chatId: "chat_" + Date.now(),
+        title: questionText.substring(0, 30),
+        createdAt: new Date().toISOString(),
+        messages: [
+          {
+            role: "user",
+            content: questionText.trim()
+          },
+          {
+            role: "assistant",
+            content: answerText.trim()
+          }
+        ]
+      };
+
+      const blob = new Blob([JSON.stringify(chatJSON, null, 2)], { type: "application/json;charset=utf-8" });
+      downloadBlob(blob, `gemini_chat_${Date.now()}.json`);
+    } catch (err) {
+      alert("JSON 변환 중 오류가 발생했습니다: " + err.message);
+    } finally {
+      setBtnLoading(btn, false, originalHTML);
+    }
+  }, 100);
 }
 
 function downloadBlob(blob, filename) {
