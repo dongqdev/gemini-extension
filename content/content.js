@@ -1173,24 +1173,15 @@ function setupMutationObserver() {
   if (mutationObserver) mutationObserver.disconnect();
 
   mutationObserver = new MutationObserver((mutations) => {
-    let shouldUpdateTOC = false;
-
     mutations.forEach(mutation => {
       if (mutation.addedNodes && mutation.addedNodes.length > 0) {
         mutation.addedNodes.forEach(node => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            if (node.querySelector(selectors.userPromptText) || node.matches(selectors.userPromptText)) {
-              shouldUpdateTOC = true;
-            }
             injectExportButtons(node);
           }
         });
       }
     });
-
-    if (shouldUpdateTOC) {
-      setTimeout(updateTOC, 500);
-    }
   });
 
   mutationObserver.observe(document.body, { childList: true, subtree: true });

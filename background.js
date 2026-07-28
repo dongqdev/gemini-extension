@@ -22,54 +22,11 @@ chrome.runtime.onInstalled.addListener(() => {
     console.log("Default selectors initialized in chrome.storage.local");
   });
 
-  // 초기 폴더 구조 셋업 (더미 chatId 제거)
+  // 초기 폴더 구조 셋업 (빈 배열로 초기화)
   chrome.storage.sync.get(["folders"], (result) => {
-    const initialFolders = [
-      {
-        id: "folder_work",
-        name: "업무",
-        color: "#3B82F6",
-        parentId: null,
-        children: ["folder_gsitm", "folder_uemura", "folder_ai"],
-        chatIds: []
-      },
-      {
-        id: "folder_gsitm",
-        name: "GSITM",
-        color: "#6EE7B7",
-        parentId: "folder_work",
-        children: [],
-        chatIds: []
-      },
-      {
-        id: "folder_uemura",
-        name: "우에무라",
-        color: "#93C5FD",
-        parentId: "folder_work",
-        children: ["folder_business_plan"],
-        chatIds: []
-      },
-      {
-        id: "folder_business_plan",
-        name: "사업계획",
-        color: "#FBBF24",
-        parentId: "folder_uemura",
-        children: [],
-        chatIds: []
-      },
-      {
-        id: "folder_ai",
-        name: "AI",
-        color: "#C084FC",
-        parentId: "folder_work",
-        children: [],
-        chatIds: []
-      }
-    ];
-
-    if (!result.folders || result.folders.length === 0) {
-      chrome.storage.sync.set({ folders: initialFolders }, () => {
-        console.log("Clean initial folders set without dummy chatIds.");
+    if (!result.folders) {
+      chrome.storage.sync.set({ folders: [] }, () => {
+        console.log("Empty initial folders set.");
       });
     }
   });
