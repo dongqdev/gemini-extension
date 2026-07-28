@@ -21,27 +21,48 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.storage.local.get(["usageFetchedData"], (result) => {
       const data = result.usageFetchedData || {
         plan: "PRO",
-        current: "1%",
+        current: "14%",
         weekly: "3%",
-        currentReset: "오후 2:23에 초기화",
+        currentReset: "오후 7:23에 초기화",
         weeklyReset: "7월 29일 오전 10:23에 초기화"
       };
 
       const planBadge = document.getElementById("plan-badge");
       if (planBadge && data.plan) planBadge.innerText = data.plan;
 
-      if (currentUsageVal) currentUsageVal.innerHTML = data.current || "1%";
+      if (currentUsageVal) currentUsageVal.innerHTML = data.current || "14%";
       if (weeklyUsageVal) weeklyUsageVal.innerHTML = data.weekly || "3%";
 
-      if (currentUsageSub) currentUsageSub.innerText = data.currentReset || "오후 2:23에 초기화";
+      if (currentUsageSub) currentUsageSub.innerText = data.currentReset || "오후 7:23에 초기화";
       if (weeklyUsageSub) weeklyUsageSub.innerText = data.weeklyReset || "7월 29일 오전 10:23에 초기화";
 
       // 프로그래스 바 비율 시각화
-      const currentNum = parseInt((data.current || "1%").replace("%", ""), 10) || 1;
+      const currentNum = parseInt((data.current || "14%").replace("%", ""), 10) || 14;
       const weeklyNum = parseInt((data.weekly || "3%").replace("%", ""), 10) || 3;
 
       if (currentProgress) currentProgress.style.width = `${Math.min(100, Math.max(0, currentNum))}%`;
       if (weeklyProgress) weeklyProgress.style.width = `${Math.min(100, Math.max(0, weeklyNum))}%`;
+    });
+
+    // 팝업 클릭(열림) 시마다 최우선 실시간 동기화 요청!
+    if (typeof chrome !== "undefined" && chrome.tabs) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs && tabs[0] && tabs[0].id) {
+          chrome.tabs.sendMessage(tabs[0].id, { action: "refreshUsage" }, (res) => {
+            if (res && res.data) {
+              loadUsageStats();
+            }
+          });
+        }
+      });
+    }
+  }
+
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "local" && changes.usageFetchedData) {
+        loadUsageStats();
+      }
     });
   }
 
