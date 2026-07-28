@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini Extension - 제미나이 대화 폴더 & 사용량 헬퍼</title>
+  <meta name="description" content="Google Gemini 대화 폴더 분류, 실시간 사용량 리밋 트래킹, 0초 마크다운/JSON 내보내기, 테마 및 대화창 폭 컨트롤을 지원하는 스마트 크롬 확장 프로그램">
+  
+  <!-- Open Graph / SEO -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Gemini Extension - 제미나이 폴더 및 사용량 헬퍼">
+  <meta property="og:description" content="Google Gemini 대화 관리를 위한 가장 스마트한 올인원 크롬 확장 프로그램">
+  <meta property="og:image" content="images/app1.png">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(21, 28, 44, 0.7);
+      --bg-card-hover: rgba(30, 41, 64, 0.85);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --border-highlight: rgba(99, 102, 241, 0.5);
+      --primary: #6366f1;
+      --primary-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-cyan: #06b6d4;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.6;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(217, 70, 239, 0.12) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(9, 13, 22, 0.8);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .nav-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 72px;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .logo-img {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+    }
+
+    .logo-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14.5px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-main);
+    }
+
+    .btn-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--primary-gradient);
+      color: #ffffff;
+      padding: 10px 22px;
+      border-radius: 99px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+      transition: all 0.3s ease;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(99, 102, 241, 0.6);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 100px 0 60px;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #a5b4fc;
+      padding: 6px 16px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    .hero-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      letter-spacing: -1px;
+    }
+
+    .hero-title span {
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto 36px;
+      font-weight: 400;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      margin-bottom: 60px;
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 12px 24px;
+      border-radius: 99px;
+      font-weight: 600;
+      font-size: 15px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    /* App Preview Frame */
+    .preview-frame {
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      max-width: 1000px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .preview-header {
+      background: #0f172a;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #27c93f; }
+
+    .preview-img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Features Grid */
+    .features {
+      padding: 100px 0;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 36px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .section-subtitle {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 32px 24px;
+      backdrop-filter: blur(12px);
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-highlight);
+      transform: translateY(-4px);
+    }
+
+    .icon-box {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .card-desc {
+      color: var(--text-muted);
+      font-size: 14.5px;
+      line-height: 1.6;
+    }
+
+    /* Gallery Showcase */
+    .gallery {
+      padding: 60px 0 100px;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 24px;
+    }
+
+    .gallery-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      overflow: hidden;
+      transition: transform 0.3s;
+    }
+
+    .gallery-item:hover {
+      transform: scale(1.02);
+      border-color: var(--primary);
+    }
+
+    .gallery-img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .gallery-caption {
+      padding: 16px 20px;
+      font-weight: 600;
+      font-size: 15px;
+      background: rgba(15, 23, 42, 0.6);
+      text-align: center;
+    }
+
+    /* Install Steps */
+    .install {
+      background: rgba(15, 23, 42, 0.6);
+      border-top: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+      padding: 80px 0;
+    }
+
+    .steps-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 32px;
+      margin-top: 40px;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 16px;
+    }
+
+    .step-number {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--primary-gradient);
+      color: #fff;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-content h4 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .step-content p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero-title { font-size: 36px; }
+      .nav-links { display: none; }
+      .hero-buttons { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="container nav-wrapper">
+      <a href="#" class="logo-group">
+        <img src="icons/icon48.png" alt="Gemini Helper Logo" class="logo-img" onerror="this.src='icons/logo.png'">
+        <span class="logo-text">Gemini Extension</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">핵심 기능</a></li>
+        <li><a href="#showcase">스크린샷</a></li>
+        <li><a href="#install">설치 방법</a></li>
+      </ul>
+      <a href="https://github.com" target="_blank" class="btn-cta">
+        <span>Chrome에 추가하기</span>
+        <span>→</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span>✨ Chrome Extension Manifest V3 지원</span>
+      </div>
+      <h1 class="hero-title">
+        Gemini 대화 관리를 위한<br>
+        <span>가장 스마트한 올인원 헬퍼</span>
+      </h1>
+      <p class="hero-desc">
+        대화 폴더 분류부터 실시간 사용량 트래킹, 0초 마크다운/JSON 내보내기,<br>
+        테마 및 대화창 폭 컨트롤까지 하나의 크롬 확장 프로그램으로 경험해 보세요.
+      </p>
+      <div class="hero-buttons">
+        <a href="#install" class="btn-cta" style="padding: 14px 32px; font-size: 16px;">
+          🚀 지금 무료로 시작하기
+        </a>
+        <a href="https://github.com" target="_blank" class="btn-secondary">
+          🐙 GitHub 저장소 둘러보기
+        </a>
+      </div>
+
+      <!-- Main App Preview Image -->
+      <div class="preview-frame">
+        <div class="preview-header">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+        </div>
+        <img src="images/app1.png" alt="Gemini Helper Preview" class="preview-img">
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">스마트한 4가지 핵심 기능</h2>
+        <p class="section-subtitle">생산성을 극대화해 줄 차세대 제미나이 헬퍼의 독보적인 기능들을 소개합니다.</p>
+      </div>
+
+      <div class="grid">
+        <!-- Feature 1 -->
+        <div class="card">
+          <div class="icon-box">📂</div>
+          <h3 class="card-title">스마트 대화 폴더 관리</h3>
+          <p class="card-desc">
+            수많은 대화를 주제별/프로젝트별 폴더로 깔끔하게 정리하세요. Chrome Sync 연동으로 어디서나 동기화됩니다.
+          </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="card">
+          <div class="icon-box">📊</div>
+          <h3 class="card-title">실시간 사용량 트래커</h3>
+          <p class="card-desc">
+            Gemini Plan 정보, 현재 사용량 %, 주간 한도 및 리셋 남은 시간을 드래그 가능한 Floating Widget으로 확인하세요.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="card">
+          <div class="icon-box">⚡</div>
+          <h3 class="card-title">Instant 0초 내보내기</h3>
+          <p class="card-desc">
+            답변을 0초 만에 찰나 추출! 마크다운(.md) 문서 저장 및 표준 JSON 구조 데이터 다운로드를 즉시 지원합니다.
+          </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="card">
+          <div class="icon-box">🎨</div>
+          <h3 class="card-title">테마 연동 & 대화창 폭 조절</h3>
+          <p class="card-desc">
+            크롬 시스템/다크/라이트 테마 자동 맞춤과 채팅창 폭(750px ~ 100% Wide) 슬라이더로 쾌적한 화면을 만드세요.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gallery Section -->
+  <section class="gallery" id="showcase">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">실제 대화 화면 적용 갤러리</h2>
+        <p class="section-subtitle">Gemini 화면에 자연스럽게 녹아드는 직관적인 사용자 경험</p>
+      </div>
+
+      <div class="gallery-grid">
+        <div class="gallery-item">
+          <img src="images/app1.png" alt="대화 관리 및 트래커" class="gallery-img">
+          <div class="gallery-caption">📂 폴더 관리 & 실시간 Floating 사용량 캡슐</div>
+        </div>
+        <div class="gallery-item">
+          <img src="images/app2.png" alt="내보내기 캡슐" class="gallery-img">
+          <div class="gallery-caption">⚡ 답변 하단 Instant Export (MD | JSON)</div>
+        </div>
+        <div class="gallery-item">
+          <img src="images/app3.png" alt="팝업 설정 컨트롤러" class="gallery-img">
+          <div class="gallery-caption">🎨 팝업 테마 선택 및 채팅 폭 조절 슬라이더</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install Steps Section -->
+  <section class="install" id="install">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">3초 만에 시작하는 간단한 설치 방법</h2>
+        <p class="section-subtitle">개발자 모드를 통해 손쉽게 크롬에 확장 프로그램을 등록할 수 있습니다.</p>
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>저장소 클론 또는 ZIP 다운로드</h4>
+            <p>GitHub에서 프로젝트 소스코드를 다운로드하거나 클론하여 압축을 해제합니다.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Chrome 확장 프로그램 모드 켜기</h4>
+            <p>크롬 주소창에 <code>chrome://extensions</code> 입력 후 우측 상단 '개발자 모드'를 활성화합니다.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>압축해제된 확장 프로그램 로드</h4>
+            <p>'압축해제된 확장 프로그램을 로드합니다'를 클릭하고 폴더를 선택하면 설치 완료!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>© 2026 Gemini Extension. Released under the MIT License.</p>
+      <p style="margin-top: 8px; font-size: 13px;">Designed with ❤️ for Google Gemini Users.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
