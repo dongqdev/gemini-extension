@@ -1772,40 +1772,120 @@ let globalRefreshUsageFn = null;
 
 let globalRefreshUsageWidgetUI = null;
 
+function parseUsageText(fullText, fallbackData = {}) {
+  if (!fullText) return null;
+
+  const lowerText = fullText.toLowerCase();
+  
+  // "주간 한도" 또는 "weekly limit" / "weekly" 단어로 영역을 나눔
+  let weeklyIdx = lowerText.indexOf("주간 한도");
+  if (weeklyIdx === -1) weeklyIdx = lowerText.indexOf("weekly limit");
+  if (weeklyIdx === -1) weeklyIdx = lowerText.indexOf("weekly");
+
+  // "현재 사용량" 또는 "current usage" / "current" 위치
+  let currentIdx = lowerText.indexOf("현재 사용량");
+  if (currentIdx === -1) currentIdx = lowerText.indexOf("current usage");
+  if (currentIdx === -1) currentIdx = lowerText.indexOf("current");
+
+  let currentPart = "";
+  let weeklyPart = "";
+
+  if (weeklyIdx !== -1) {
+    if (currentIdx !== -1 && currentIdx < weeklyIdx) {
+      currentPart = fullText.substring(currentIdx, weeklyIdx);
+    } else {
+      currentPart = fullText.substring(0, weeklyIdx);
+    }
+    weeklyPart = fullText.substring(weeklyIdx);
+  } else {
+    currentPart = fullText;
+    weeklyPart = "";
+  }
+
+  // 1. 현재 사용량 수치 파싱
+  let currentVal = fallbackData.current || "14%";
+  const currentMatch = currentPart.match(/(\d+)\s*%\s*(?:사용됨|used|consumed)/i) || 
+                       currentPart.match(/(\d+)\s*%/i);
+  if (currentMatch) {
+    currentVal = currentMatch[1] + "%";
+  }
+
+  // 2. 주간 사용량 수치 파싱
+  let weeklyVal = fallbackData.weekly || "3%";
+  if (weeklyPart) {
+    const weeklyMatch = weeklyPart.match(/(\d+)\s*%\s*(?:사용됨|used|consumed)/i) || 
+                        weeklyPart.match(/(\d+)\s*%/i);
+    if (weeklyMatch) {
+      weeklyVal = weeklyMatch[1] + "%";
+    }
+  }
+
+  // 3. 현재 사용량 초기화 시각 파싱
+  let currentReset = fallbackData.currentReset || "오후 7:23에 초기화";
+  const currentResetMatch = currentPart.match(/오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i) ||
+                            currentPart.match(/(?:resets|reset)\s*at\s*오[전후]\s*\d{1,2}:\d{2}/i) ||
+                            currentPart.match(/(?:resets\s*at\s*)?\d{1,2}:\d{2}\s*(?:am|pm)/i);
+  if (currentResetMatch) {
+    let rawReset = currentResetMatch[0];
+    if (rawReset.toLowerCase().includes("reset")) {
+      rawReset = rawReset.replace(/resets?\s*at\s*/i, "").trim();
+    }
+    currentReset = rawReset.includes("초기화") ? rawReset : rawReset + "에 초기화";
+  }
+
+  // 4. 주간 사용량 초기화 시각 파싱
+  let weeklyReset = fallbackData.weeklyReset || "7월 29일 오전 10:23에 초기화";
+  if (weeklyPart) {
+    const weeklyResetMatch = weeklyPart.match(/\d+월\s*\d+일\s*오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i) ||
+                             weeklyPart.match(/(?:resets|reset)\s*at\s*.*?\d{1,2}:\d{2}\s*(?:am|pm)/i) ||
+                             weeklyPart.match(/오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i) ||
+                             weeklyPart.match(/(?:resets\s*at\s*)?\d{1,2}:\d{2}\s*(?:am|pm)/i);
+    if (weeklyResetMatch) {
+      let rawReset = weeklyResetMatch[0];
+      if (rawReset.toLowerCase().includes("reset")) {
+        rawReset = rawReset.replace(/resets?\s*at\s*/i, "").trim();
+      }
+      weeklyReset = rawReset.includes("초기화") ? rawReset : rawReset + "에 초기화";
+    }
+  }
+
+  return {
+    plan: fallbackData.plan || "PRO",
+    current: currentVal,
+    weekly: weeklyVal,
+    currentReset: currentReset,
+    weeklyReset: weeklyReset,
+    updatedAt: Date.now()
+  };
+}
+
 function extractUsageFromDOM() {
   try {
     const fullText = document.body ? (document.body.innerText || document.body.textContent || "") : "";
     if (!fullText) return null;
 
-    // 한국어 Gemini 실제 UI 패턴 추출: "14% 사용됨", "오후 7:23에 초기화"
-    const currentMatch = fullText.match(/현재\s*사용량[\s\S]*?(\d+)\s*%\s*사용됨/i) || 
-                         fullText.match(/(\d+)\s*%\s*사용됨/i) ||
-                         fullText.match(/(\d+)\s*%\s*used/i);
+    // 현재 화면 DOM에서 텍스트가 정상적인 사용량 한도 페이지인지 판별
+    const hasUsageIndicator = fullText.includes("사용량 한도") || 
+                              fullText.includes("Usage limits") || 
+                              fullText.includes("현재 사용량") ||
+                              fullText.includes("주간 한도");
+    if (!hasUsageIndicator) return null;
 
-    const weeklyMatch = fullText.match(/주간\s*한도[\s\S]*?(\d+)\s*%\s*사용됨/i) ||
-                        fullText.match(/Weekly[\s\S]*?(\d+)\s*%/i);
+    const usageInfo = parseUsageText(fullText, {
+      plan: "PRO",
+      current: "14%",
+      weekly: "3%",
+      currentReset: "오후 7:23에 초기화",
+      weeklyReset: "7월 29일 오전 10:23에 초기화"
+    });
 
-    const currentResetMatch = fullText.match(/오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i);
-    const weeklyResetMatch = fullText.match(/\d+월\s*\d+일\s*오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i);
-
-    if (currentMatch) {
-      const curVal = currentMatch[1] + "%";
-      const weekVal = weeklyMatch ? (weeklyMatch[1] + "%") : "3%";
-      const curReset = currentResetMatch ? (currentResetMatch[0].includes("초기화") ? currentResetMatch[0] : currentResetMatch[0] + "에 초기화") : "오후 7:23에 초기화";
-      const weekReset = weeklyResetMatch ? (weeklyResetMatch[0].includes("초기화") ? weeklyResetMatch[0] : weeklyResetMatch[0] + "에 초기화") : "7월 29일 오전 10:23에 초기화";
-
-      const usageInfo = {
-        plan: "PRO",
-        current: curVal,
-        weekly: weekVal,
-        currentReset: curReset,
-        weeklyReset: weekReset,
-        updatedAt: Date.now()
-      };
+    if (usageInfo) {
       safeStorageLocalSet({ usageFetchedData: usageInfo });
       return usageInfo;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error("extractUsageFromDOM error:", e);
+  }
   return null;
 }
 
@@ -1842,49 +1922,35 @@ function fetchGeminiUsage(callback, forceFetch = false) {
       }, 1200);
     }
 
-    // 4. 백그라운드 요청 및 유효한 파싱 데이터만 업데이트
-    fetch("https://gemini.google.com/usage", { credentials: "include" })
+    // 4. 백그라운드 요청 및 유효한 파싱 데이터만 업데이트 (캐시 방지 및 hl=ko 추가)
+    const fetchUrl = `https://gemini.google.com/usage?hl=ko&t=${Date.now()}`;
+    fetch(fetchUrl, { 
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        "Pragma": "no-cache",
+        "Cache-Control": "no-cache"
+      }
+    })
       .then((response) => {
         if (!response.ok) throw new Error("HTTP error " + response.status);
         return response.text();
       })
       .then((html) => {
-        let planName = savedData.plan || "PRO";
-        let currentVal = savedData.current || "14%";
-        let weeklyVal = savedData.weekly || "3%";
-        let currentReset = savedData.currentReset || "오후 7:23에 초기화";
-        let weeklyReset = savedData.weeklyReset || "7월 29일 오전 10:23에 초기화";
+        let usageInfo = savedData;
 
         try {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, "text/html");
           const fullText = doc.body ? (doc.body.innerText || doc.body.textContent || "") : html;
 
-          const currentMatch = fullText.match(/현재\s*사용량[\s\S]*?(\d+)\s*%/i) ||
-                               fullText.match(/(\d+)\s*%\s*(?:사용됨|used|consumed)/i);
-          if (currentMatch) {
-            currentVal = currentMatch[1].replace("%", "") + "%";
+          const parsed = parseUsageText(fullText, savedData);
+          if (parsed) {
+            usageInfo = parsed;
           }
-
-          const weeklyMatch = fullText.match(/주간\s*한도[\s\S]*?(\d+)\s*%/i);
-          if (weeklyMatch) {
-            weeklyVal = weeklyMatch[1].replace("%", "") + "%";
-          }
-
-          const resetCurrentMatch = fullText.match(/오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i);
-          if (resetCurrentMatch) {
-            currentReset = resetCurrentMatch[0].includes("초기화") ? resetCurrentMatch[0] : resetCurrentMatch[0] + "에 초기화";
-          }
-        } catch (e) {}
-
-        const usageInfo = {
-          plan: planName,
-          current: currentVal,
-          weekly: weeklyVal,
-          currentReset: currentReset,
-          weeklyReset: weeklyReset,
-          updatedAt: Date.now()
-        };
+        } catch (e) {
+          console.error("fetchGeminiUsage parse error:", e);
+        }
 
         // 스토리지 저장을 완전히 마친 후 콜백을 실행하여 비동기 일관성 보장!
         if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
