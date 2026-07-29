@@ -1029,7 +1029,13 @@ message-content,
 .user-query-container,
 .model-response-container,
 div[class*='user-query-container'],
-div[class*='model-response-container'] {
+div[class*='model-response-container'],
+ms-chat-chunk,
+.chat-chunk,
+ms-chat-item,
+.chat-history > div,
+.conversation-container > div,
+main .chat-view div {
   max-width: var(--gemini-chat-width, 960px) !important;
   margin-left: auto !important;
   margin-right: auto !important;

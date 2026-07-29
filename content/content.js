@@ -1809,7 +1809,7 @@ function extractUsageFromDOM() {
   return null;
 }
 
-function fetchGeminiUsage(callback) {
+function fetchGeminiUsage(callback, forceFetch = false) {
   // 0. 스토리지에 저장되어 있던 소중한 유효 최신 데이터를 먼저 불러옴 (1% 튕김 원천 방지!)
   safeStorageLocalGet(["usageFetchedData"], (storageRes) => {
     const savedData = storageRes.usageFetchedData || {
@@ -1820,23 +1820,27 @@ function fetchGeminiUsage(callback) {
       weeklyReset: "7월 29일 오전 10:23에 초기화"
     };
 
-    // 1. 현재 화면 DOM에 "14% 사용됨"이 그려져 있는 경우 최우선 추출
+    // 1. 강제 동기화가 아니며 현재 화면 DOM에 사용량이 그려져 있는 경우 최우선 추출
     const liveDomInfo = extractUsageFromDOM();
-    if (liveDomInfo) {
+    if (liveDomInfo && !forceFetch) {
       if (callback) callback(liveDomInfo);
       return;
     }
 
-    // 2. 새로고침(F5) 직후라 DOM이 그리는 중일 때 기존 유효한 저장값(14%)을 우선 UI에 즉시 반환하여 1% 튕김 방지
-    if (callback) callback(savedData);
+    // 2. 강제 동기화가 아니면 기존 저장값을 즉시 반환하여 UI 깜빡임 방지
+    if (!forceFetch && callback) {
+      callback(savedData);
+    }
 
-    // 3. 지연 렌더링 대기 (1.2초 뒤 화면에 14% 사용됨 노드가 그려지는 순간 업데이트)
-    setTimeout(() => {
-      const retryDomInfo = extractUsageFromDOM();
-      if (retryDomInfo && typeof globalRefreshUsageWidgetUI === "function") {
-        globalRefreshUsageWidgetUI(retryDomInfo);
-      }
-    }, 1200);
+    // 3. 지연 렌더링 대기 (지연 패치 - forceFetch가 아닐 때만 보정 기동)
+    if (!forceFetch) {
+      setTimeout(() => {
+        const retryDomInfo = extractUsageFromDOM();
+        if (retryDomInfo && typeof globalRefreshUsageWidgetUI === "function") {
+          globalRefreshUsageWidgetUI(retryDomInfo);
+        }
+      }, 1200);
+    }
 
     // 4. 백그라운드 요청 및 유효한 파싱 데이터만 업데이트
     fetch("https://gemini.google.com/usage", { credentials: "include" })
@@ -1881,12 +1885,28 @@ function fetchGeminiUsage(callback) {
           weeklyReset: weeklyReset,
           updatedAt: Date.now()
         };
-        safeStorageLocalSet({ usageFetchedData: usageInfo });
-        if (typeof globalRefreshUsageWidgetUI === "function") {
-          globalRefreshUsageWidgetUI(usageInfo);
+
+        // 스토리지 저장을 완전히 마친 후 콜백을 실행하여 비동기 일관성 보장!
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ usageFetchedData: usageInfo }, () => {
+            if (forceFetch && callback) {
+              callback(usageInfo);
+            }
+            if (typeof globalRefreshUsageWidgetUI === "function") {
+              globalRefreshUsageWidgetUI(usageInfo);
+            }
+          });
+        } else {
+          safeStorageLocalSet({ usageFetchedData: usageInfo });
+          if (forceFetch && callback) callback(usageInfo);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("fetchGeminiUsage error:", err);
+        if (forceFetch && callback) {
+          callback(savedData);
+        }
+      });
   });
 }
 
@@ -2229,7 +2249,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === "refreshUsage") {
     fetchGeminiUsage((info) => {
       sendResponse({ status: "success", data: info });
-    });
+    }, true);
     return true;
   } else if (message.action === "getSidebarChats") {
     const assignedIds = message.assignedChatIds || [];

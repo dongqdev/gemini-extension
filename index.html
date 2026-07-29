@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gemini Extension - 제미나이 대화 폴더 & 사용량 헬퍼</title>
-  <meta name="description" content="Google Gemini 대화 폴더 분류, 실시간 사용량 리밋 트래킹, 0초 마크다운/JSON 내보내기, 테마 및 대화창 폭 컨트롤을 지원하는 스마트 크롬 확장 프로그램">
-  
+  <meta name="description"
+    content="Google Gemini 대화 폴더 분류, 실시간 사용량 리밋 트래킹, 0초 마크다운/JSON 내보내기, 테마 및 대화창 폭 컨트롤을 지원하는 스마트 크롬 확장 프로그램">
+
   <!-- Open Graph / SEO -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Gemini Extension - 제미나이 폴더 및 사용량 헬퍼">
@@ -15,7 +17,9 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap"
+    rel="stylesheet">
 
   <style>
     :root {
@@ -43,7 +47,7 @@
       color: var(--text-main);
       line-height: 1.6;
       overflow-x: hidden;
-      background-image: 
+      background-image:
         radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
         radial-gradient(circle at 85% 85%, rgba(217, 70, 239, 0.12) 0%, transparent 40%);
       background-attachment: fixed;
@@ -235,9 +239,17 @@
       border-radius: 50%;
     }
 
-    .dot-red { background: #ff5f56; }
-    .dot-yellow { background: #ffbd2e; }
-    .dot-green { background: #27c93f; }
+    .dot-red {
+      background: #ff5f56;
+    }
+
+    .dot-yellow {
+      background: #ffbd2e;
+    }
+
+    .dot-green {
+      background: #27c93f;
+    }
 
     .preview-img {
       width: 100%;
@@ -406,12 +418,21 @@
 
     /* Responsive */
     @media (max-width: 768px) {
-      .hero-title { font-size: 36px; }
-      .nav-links { display: none; }
-      .hero-buttons { flex-direction: column; }
+      .hero-title {
+        font-size: 36px;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .hero-buttons {
+        flex-direction: column;
+      }
     }
   </style>
 </head>
+
 <body>
 
   <!-- Header -->
@@ -449,7 +470,7 @@
       </p>
       <div class="hero-buttons">
         <a href="#install" class="btn-cta" style="padding: 14px 32px; font-size: 16px;">
-          🚀 지금 무료로 시작하기
+          지금 무료로 시작하기
         </a>
         <a href="https://github.com/dongqdev/gemini-extension/" target="_blank" class="btn-secondary">
           🐙 GitHub 저장소 둘러보기
@@ -584,4 +605,5 @@
   </footer>
 
 </body>
+
 </html>
