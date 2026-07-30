@@ -1743,10 +1743,12 @@ function setupUsageTracking() {
 
       chrome.storage.local.set({ usageData: data });
 
-      // 질문 전송 시 즉시 실시간 사용량 동기화 수행
-      if (typeof globalRefreshUsageFn === "function") {
-        setTimeout(() => globalRefreshUsageFn(), 1000);
-      }
+      // 질문 전송 시 즉시 백그라운드 임시 탭 기반 실시간 사용량 동기화 수행
+      setTimeout(() => {
+        if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) {
+          chrome.runtime.sendMessage({ action: "requestFetchUsage" });
+        }
+      }, 2000);
     });
   }
 
@@ -1772,96 +1774,18 @@ let globalRefreshUsageFn = null;
 
 let globalRefreshUsageWidgetUI = null;
 
-function parseUsageText(fullText, fallbackData = {}) {
-  if (!fullText) return null;
+// parseUsageText function is now loaded from libs/usage-parser.js
 
-  const lowerText = fullText.toLowerCase();
-  
-  // "주간 한도" 또는 "weekly limit" / "weekly" 단어로 영역을 나눔
-  let weeklyIdx = lowerText.indexOf("주간 한도");
-  if (weeklyIdx === -1) weeklyIdx = lowerText.indexOf("weekly limit");
-  if (weeklyIdx === -1) weeklyIdx = lowerText.indexOf("weekly");
-
-  // "현재 사용량" 또는 "current usage" / "current" 위치
-  let currentIdx = lowerText.indexOf("현재 사용량");
-  if (currentIdx === -1) currentIdx = lowerText.indexOf("current usage");
-  if (currentIdx === -1) currentIdx = lowerText.indexOf("current");
-
-  let currentPart = "";
-  let weeklyPart = "";
-
-  if (weeklyIdx !== -1) {
-    if (currentIdx !== -1 && currentIdx < weeklyIdx) {
-      currentPart = fullText.substring(currentIdx, weeklyIdx);
-    } else {
-      currentPart = fullText.substring(0, weeklyIdx);
-    }
-    weeklyPart = fullText.substring(weeklyIdx);
-  } else {
-    currentPart = fullText;
-    weeklyPart = "";
-  }
-
-  // 1. 현재 사용량 수치 파싱
-  let currentVal = fallbackData.current || "14%";
-  const currentMatch = currentPart.match(/(\d+)\s*%\s*(?:사용됨|used|consumed)/i) || 
-                       currentPart.match(/(\d+)\s*%/i);
-  if (currentMatch) {
-    currentVal = currentMatch[1] + "%";
-  }
-
-  // 2. 주간 사용량 수치 파싱
-  let weeklyVal = fallbackData.weekly || "3%";
-  if (weeklyPart) {
-    const weeklyMatch = weeklyPart.match(/(\d+)\s*%\s*(?:사용됨|used|consumed)/i) || 
-                        weeklyPart.match(/(\d+)\s*%/i);
-    if (weeklyMatch) {
-      weeklyVal = weeklyMatch[1] + "%";
-    }
-  }
-
-  // 3. 현재 사용량 초기화 시각 파싱
-  let currentReset = fallbackData.currentReset || "오후 7:23에 초기화";
-  const currentResetMatch = currentPart.match(/오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i) ||
-                            currentPart.match(/(?:resets|reset)\s*at\s*오[전후]\s*\d{1,2}:\d{2}/i) ||
-                            currentPart.match(/(?:resets\s*at\s*)?\d{1,2}:\d{2}\s*(?:am|pm)/i);
-  if (currentResetMatch) {
-    let rawReset = currentResetMatch[0];
-    if (rawReset.toLowerCase().includes("reset")) {
-      rawReset = rawReset.replace(/resets?\s*at\s*/i, "").trim();
-    }
-    currentReset = rawReset.includes("초기화") ? rawReset : rawReset + "에 초기화";
-  }
-
-  // 4. 주간 사용량 초기화 시각 파싱
-  let weeklyReset = fallbackData.weeklyReset || "7월 29일 오전 10:23에 초기화";
-  if (weeklyPart) {
-    const weeklyResetMatch = weeklyPart.match(/\d+월\s*\d+일\s*오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i) ||
-                             weeklyPart.match(/(?:resets|reset)\s*at\s*.*?\d{1,2}:\d{2}\s*(?:am|pm)/i) ||
-                             weeklyPart.match(/오[전후]\s*\d{1,2}:\d{2}(?:\s*에\s*초기화)?/i) ||
-                             weeklyPart.match(/(?:resets\s*at\s*)?\d{1,2}:\d{2}\s*(?:am|pm)/i);
-    if (weeklyResetMatch) {
-      let rawReset = weeklyResetMatch[0];
-      if (rawReset.toLowerCase().includes("reset")) {
-        rawReset = rawReset.replace(/resets?\s*at\s*/i, "").trim();
-      }
-      weeklyReset = rawReset.includes("초기화") ? rawReset : rawReset + "에 초기화";
-    }
-  }
-
-  return {
-    plan: fallbackData.plan || "PRO",
-    current: currentVal,
-    weekly: weeklyVal,
-    currentReset: currentReset,
-    weeklyReset: weeklyReset,
-    updatedAt: Date.now()
-  };
-}
 
 function extractUsageFromDOM() {
   try {
-    const fullText = document.body ? (document.body.innerText || document.body.textContent || "") : "";
+    let fullText = "";
+    if (document.body) {
+      const clone = document.body.cloneNode(true);
+      const geminiElements = clone.querySelectorAll("[id^='gemini-']");
+      geminiElements.forEach(el => el.remove());
+      fullText = clone.innerText || clone.textContent || "";
+    }
     if (!fullText) return null;
 
     // 현재 화면 DOM에서 텍스트가 정상적인 사용량 한도 페이지인지 판별
@@ -1922,57 +1846,10 @@ function fetchGeminiUsage(callback, forceFetch = false) {
       }, 1200);
     }
 
-    // 4. 백그라운드 요청 및 유효한 파싱 데이터만 업데이트 (캐시 방지 및 hl=ko 추가)
-    const fetchUrl = `https://gemini.google.com/usage?hl=ko&t=${Date.now()}`;
-    fetch(fetchUrl, { 
-      credentials: "include",
-      cache: "no-store",
-      headers: {
-        "Pragma": "no-cache",
-        "Cache-Control": "no-cache"
-      }
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("HTTP error " + response.status);
-        return response.text();
-      })
-      .then((html) => {
-        let usageInfo = savedData;
-
-        try {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, "text/html");
-          const fullText = doc.body ? (doc.body.innerText || doc.body.textContent || "") : html;
-
-          const parsed = parseUsageText(fullText, savedData);
-          if (parsed) {
-            usageInfo = parsed;
-          }
-        } catch (e) {
-          console.error("fetchGeminiUsage parse error:", e);
-        }
-
-        // 스토리지 저장을 완전히 마친 후 콜백을 실행하여 비동기 일관성 보장!
-        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.set({ usageFetchedData: usageInfo }, () => {
-            if (forceFetch && callback) {
-              callback(usageInfo);
-            }
-            if (typeof globalRefreshUsageWidgetUI === "function") {
-              globalRefreshUsageWidgetUI(usageInfo);
-            }
-          });
-        } else {
-          safeStorageLocalSet({ usageFetchedData: usageInfo });
-          if (forceFetch && callback) callback(usageInfo);
-        }
-      })
-      .catch((err) => {
-        console.error("fetchGeminiUsage error:", err);
-        if (forceFetch && callback) {
-          callback(savedData);
-        }
-      });
+    // 4. 백그라운드 서비스 워커에 동기화 요청 위임
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) {
+      chrome.runtime.sendMessage({ action: "requestFetchUsage" });
+    }
   });
 }
 
@@ -2084,8 +1961,17 @@ function setupUsageFloatingWidget() {
 
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === "local" && changes.themeSetting) {
-        updateWidgetTheme(changes.themeSetting.newValue);
+      if (areaName === "local") {
+        if (changes.themeSetting) {
+          updateWidgetTheme(changes.themeSetting.newValue);
+        }
+        if (changes.usageFetchedData && changes.usageFetchedData.newValue) {
+          updateUsageUI(changes.usageFetchedData.newValue);
+          // 현재 페이지가 임시 수집 탭(usage 단독 페이지)이 아닌 일반 채팅 페이지인 경우 토스트 출력
+          if (!window.location.pathname.includes("/usage")) {
+            showUsageUpdateToast();
+          }
+        }
       }
     });
   }
@@ -2156,9 +2042,13 @@ function setupUsageFloatingWidget() {
   if (refreshBtn) {
     refreshBtn.addEventListener("click", () => {
       refreshBtn.classList.add("spinning");
-      refreshUsageData(() => {
-        setTimeout(() => refreshBtn.classList.remove("spinning"), 600);
-      });
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({ action: "requestFetchUsage" }, () => {
+          setTimeout(() => refreshBtn.classList.remove("spinning"), 1200);
+        });
+      } else {
+        setTimeout(() => refreshBtn.classList.remove("spinning"), 1200);
+      }
     });
   }
 
@@ -2308,6 +2198,144 @@ function getAllSidebarChats(assignedChatIds = []) {
   return chatList.slice(0, 100);
 }
 
+function performIframeUsageFetch(sendResponse) {
+  console.log("[Content] Invisible iframe usage fetch initiated.");
+  
+  // 기존 수집 중인 iframe이 있다면 제거
+  const oldIframe = document.getElementById("gemini-usage-loader-iframe");
+  if (oldIframe) oldIframe.remove();
+
+  const iframe = document.createElement("iframe");
+  iframe.id = "gemini-usage-loader-iframe";
+  iframe.src = "https://gemini.google.com/usage?hl=ko";
+  iframe.style.cssText = "width:1px; height:1px; opacity:0; position:absolute; left:-9999px; top:-9999px; pointer-events:none; z-index:-9999;";
+  
+  let attempts = 0;
+  const maxAttempts = 12; // 500ms * 12 = 6초 동안 대기
+  let checkInterval = null;
+
+  const cleanup = () => {
+    if (checkInterval) clearInterval(checkInterval);
+    if (iframe) iframe.remove();
+    console.log("[Content] Invisible iframe cleaned up.");
+  };
+
+  iframe.onload = () => {
+    console.log("[Content] Usage iframe loaded. Starting DOM check...");
+    
+    checkInterval = setInterval(() => {
+      attempts++;
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        if (!iframeDoc || !iframeDoc.body) {
+          if (attempts >= maxAttempts) {
+            cleanup();
+            if (sendResponse) sendResponse({ status: "error", error: "Iframe body not accessible" });
+            chrome.runtime.sendMessage({ action: "fetchFailed", error: "Iframe body not accessible" });
+          }
+          return;
+        }
+
+        // 1. 클래스 기반 정밀 추출 시도
+        const currentEl = iframeDoc.querySelector(".gxu-currently");
+        const weeklyEl = iframeDoc.querySelector(".gxu-weekly");
+
+        if (currentEl || weeklyEl) {
+          console.log("[Content] Found usage elements in iframe DOM!");
+          const currentVal = currentEl ? (currentEl.innerText || currentEl.textContent || "").trim() : "";
+          const weeklyVal = weeklyEl ? (weeklyEl.innerText || weeklyEl.textContent || "").trim() : "";
+          
+          safeStorageLocalGet(["usageFetchedData"], (result) => {
+            const savedData = result.usageFetchedData || {
+              plan: "PRO",
+              current: "14%",
+              weekly: "3%",
+              currentReset: "오후 7:23에 초기화",
+              weeklyReset: "7월 29일 오전 10:23에 초기화"
+            };
+
+            const cleanNum = (str) => {
+              const match = str.match(/(\d+)\s*%/);
+              return match ? match[1] + "%" : str;
+            };
+
+            const parsed = {
+              plan: savedData.plan || "PRO",
+              current: cleanNum(currentVal) || savedData.current,
+              weekly: cleanNum(weeklyVal) || savedData.weekly,
+              currentReset: savedData.currentReset,
+              weeklyReset: savedData.weeklyReset,
+              updatedAt: Date.now()
+            };
+
+            // 리셋 시간 파싱을 위해 텍스트 기반 파싱도 병행
+            const fullText = iframeDoc.body.innerText || iframeDoc.body.textContent || "";
+            const textParsed = parseUsageText(fullText, parsed);
+            const finalData = textParsed || parsed;
+
+            console.log("[Content] Custom parsed usage data via iframe:", finalData);
+            safeStorageLocalSet({ usageFetchedData: finalData });
+            chrome.runtime.sendMessage({ action: "fetchCompleted", data: finalData });
+            if (sendResponse) sendResponse({ status: "success", data: finalData });
+            cleanup();
+          });
+          return;
+        }
+
+        // 2. 텍스트 기반 Fallback 파싱 시도 (클래스가 없는 동적 상황)
+        const fullText = iframeDoc.body.innerText || iframeDoc.body.textContent || "";
+        if (fullText && (fullText.includes("현재 사용량") || fullText.includes("사용량 한도") || fullText.includes("주간 한도"))) {
+          console.log("[Content] Usage text detected in iframe, running parser...");
+          
+          safeStorageLocalGet(["usageFetchedData"], (result) => {
+            const savedData = result.usageFetchedData || {
+              plan: "PRO",
+              current: "14%",
+              weekly: "3%",
+              currentReset: "오후 7:23에 초기화",
+              weeklyReset: "7월 29일 오전 10:23에 초기화"
+            };
+
+            const parsed = parseUsageText(fullText, savedData);
+            if (parsed) {
+              console.log("[Content] Text parser completed via iframe:", parsed);
+              safeStorageLocalSet({ usageFetchedData: parsed });
+              chrome.runtime.sendMessage({ action: "fetchCompleted", data: parsed });
+              if (sendResponse) sendResponse({ status: "success", data: parsed });
+              cleanup();
+            } else {
+              if (attempts >= maxAttempts) {
+                console.error("[Content] Text parsing failed after loading.");
+                if (sendResponse) sendResponse({ status: "error", error: "Parsing failed" });
+                chrome.runtime.sendMessage({ action: "fetchFailed", error: "Parsing failed" });
+                cleanup();
+              }
+            }
+          });
+          return;
+        }
+
+        // 최대 시도 횟수 초과 시 에러 처리
+        if (attempts >= maxAttempts) {
+          console.error("[Content] Usage elements not found in iframe within timeout.");
+          if (sendResponse) sendResponse({ status: "error", error: "Timeout waiting for usage elements" });
+          chrome.runtime.sendMessage({ action: "fetchFailed", error: "Timeout waiting for usage elements" });
+          cleanup();
+        }
+      } catch (err) {
+        console.error("[Content] Error reading usage iframe content:", err);
+        if (attempts >= maxAttempts) {
+          if (sendResponse) sendResponse({ status: "error", error: err.message });
+          chrome.runtime.sendMessage({ action: "fetchFailed", error: err.message });
+          cleanup();
+        }
+      }
+    }, 500);
+  };
+
+  document.body.appendChild(iframe);
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "refreshSelectors") {
     init();
@@ -2316,6 +2344,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     fetchGeminiUsage((info) => {
       sendResponse({ status: "success", data: info });
     }, true);
+    return true;
+  } else if (message.action === "requestIframeUsageFetch") {
+    performIframeUsageFetch(sendResponse);
+    return true;
+  } else if (message.action === "scrapeUsageDirectly") {
+    performDirectUsageScrape(sendResponse);
     return true;
   } else if (message.action === "getSidebarChats") {
     const assignedIds = message.assignedChatIds || [];
@@ -2327,6 +2361,136 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // 초기 실행
 init();
+
+/**
+ * 탭 내부의 DOM에서 직접 사용량 정보를 긁어서 백그라운드 서비스 워커로 전송합니다.
+ */
+function performDirectUsageScrape(sendResponse) {
+  console.log("[Content] Direct DOM usage scrape initiated.");
+  let attempts = 0;
+  const maxAttempts = 15; // 200ms * 15 = 3초 동안 렌더링 폴링
+  
+  const checkInterval = setInterval(() => {
+    attempts++;
+    try {
+      const currentEl = document.querySelector(".gxu-currently");
+      const weeklyEl = document.querySelector(".gxu-weekly");
+      const fullText = document.body ? (document.body.innerText || document.body.textContent || "") : "";
+
+      // 사용량 지표 엘리먼트 혹은 특정 텍스트 키워드가 확인되면 파싱 진행
+      if (currentEl || weeklyEl || fullText.includes("현재 사용량") || fullText.includes("사용량 한도") || fullText.includes("주간 한도") || fullText.includes("Usage limits")) {
+        clearInterval(checkInterval);
+        
+        const currentVal = currentEl ? (currentEl.innerText || currentEl.textContent || "").trim() : "";
+        const weeklyVal = weeklyEl ? (weeklyEl.innerText || weeklyEl.textContent || "").trim() : "";
+        
+        safeStorageLocalGet(["usageFetchedData"], (result) => {
+          const savedData = result.usageFetchedData || {
+            plan: "PRO",
+            current: "14%",
+            weekly: "3%",
+            currentReset: "오후 7:23에 초기화",
+            weeklyReset: "7월 29일 오전 10:23에 초기화"
+          };
+
+          const cleanNum = (str) => {
+            const match = str.match(/(\d+)\s*%/);
+            return match ? match[1] + "%" : str;
+          };
+
+          const parsed = {
+            plan: savedData.plan || "PRO",
+            current: cleanNum(currentVal) || savedData.current,
+            weekly: cleanNum(weeklyVal) || savedData.weekly,
+            currentReset: savedData.currentReset,
+            weeklyReset: savedData.weeklyReset,
+            updatedAt: Date.now()
+          };
+
+          const textParsed = parseUsageText(fullText, parsed);
+          const finalData = textParsed || parsed;
+
+          console.log("[Content] Direct parsed usage data:", finalData);
+          
+          // 로컬 스토리지 업데이트 및 메시지 전송
+          safeStorageLocalSet({ usageFetchedData: finalData });
+          
+          if (sendResponse) {
+            sendResponse({ status: "success", data: finalData });
+          }
+          chrome.runtime.sendMessage({ action: "usageScraped", data: finalData });
+        });
+      } else {
+        if (attempts >= maxAttempts) {
+          clearInterval(checkInterval);
+          console.error("[Content] Direct usage elements not found in DOM within timeout.");
+          if (sendResponse) sendResponse({ status: "error", error: "Timeout waiting for usage elements" });
+          chrome.runtime.sendMessage({ action: "usageScrapeFailed", error: "Timeout waiting for usage elements" });
+        }
+      }
+    } catch (err) {
+      clearInterval(checkInterval);
+      console.error("[Content] Direct usage scrape error:", err);
+      if (sendResponse) sendResponse({ status: "error", error: err.message });
+      chrome.runtime.sendMessage({ action: "usageScrapeFailed", error: err.message });
+    }
+  }, 200);
+}
+
+/**
+ * 사용량 업데이트 완료를 알리는 오른쪽 하단 토스트 메시지 팝업 (검은색 배경에 흰색 텍스트)
+ */
+function showUsageUpdateToast() {
+  // 기존 토스트가 떠 있다면 제거하여 중복 생성 방지
+  const oldToast = document.getElementById("gemini-usage-toast");
+  if (oldToast) oldToast.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "gemini-usage-toast";
+  toast.innerText = "사용량 동기화 완료";
+  
+  // 스타일 지정 (검은 배경, 흰 텍스트, 오른쪽 하단)
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: rgba(0, 0, 0, 0.85);
+    color: #ffffff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    z-index: 999999;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  `;
+
+  document.body.appendChild(toast);
+
+  // 강제 리플로우 유도
+  toast.offsetHeight;
+
+  // 나타나기 애니메이션
+  toast.style.opacity = "1";
+  toast.style.transform = "translateY(0)";
+
+  // 2.5초 후 페이드아웃 및 삭제
+  setTimeout(() => {
+    if (toast) {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(-10px)";
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.remove();
+        }
+      }, 300);
+    }
+  }, 2500);
+}
 
 
 

@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Gemini Extension (제미나이 폴더 및 사용량 헬퍼)",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "제미나이(Gemini) 대화 관리 폴더, 실시간 사용량 위젯, 대화 내보내기 및 대화창 너비 제어 확장 프로그램",
   "permissions": [
-    "storage"
+    "storage",
+    "offscreen",
+    "alarms"
   ],
   "host_permissions": [
     "https://gemini.google.com/*"
@@ -20,6 +22,7 @@
       "js": [
         "libs/html2canvas.min.js",
         "libs/turndown.js",
+        "libs/usage-parser.js",
         "content/content.js"
       ],
       "css": [

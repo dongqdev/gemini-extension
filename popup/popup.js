@@ -44,18 +44,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (weeklyProgress) weeklyProgress.style.width = `${Math.min(100, Math.max(0, weeklyNum))}%`;
     });
 
-    // 팝업 클릭(열림) 시마다 최우선 실시간 동기화 요청 (Gemini 탭 전용 & 에러 가드)
-    if (typeof chrome !== "undefined" && chrome.tabs) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs && tabs[0] && tabs[0].id && tabs[0].url && tabs[0].url.includes("gemini.google.com")) {
-          chrome.tabs.sendMessage(tabs[0].id, { action: "refreshUsage" }, (res) => {
-            if (chrome.runtime.lastError) return; // 미수신 에러 무소음 감지
-            if (res && res.data) {
-              loadUsageStats();
-            }
-          });
-        }
-      });
+    // 팝업 클릭(열림) 시마다 백그라운드에 최우선 실시간 동기화 요청
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id) {
+      chrome.runtime.sendMessage({ action: "requestFetchUsage" });
     }
   }
 
