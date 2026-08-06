@@ -1967,10 +1967,6 @@ function setupUsageFloatingWidget() {
         }
         if (changes.usageFetchedData && changes.usageFetchedData.newValue) {
           updateUsageUI(changes.usageFetchedData.newValue);
-          // 현재 페이지가 임시 수집 탭(usage 단독 페이지)이 아닌 일반 채팅 페이지인 경우 토스트 출력
-          if (!window.location.pathname.includes("/usage")) {
-            showUsageUpdateToast();
-          }
         }
       }
     });
@@ -2437,60 +2433,7 @@ function performDirectUsageScrape(sendResponse) {
   }, 200);
 }
 
-/**
- * 사용량 업데이트 완료를 알리는 오른쪽 하단 토스트 메시지 팝업 (검은색 배경에 흰색 텍스트)
- */
-function showUsageUpdateToast() {
-  // 기존 토스트가 떠 있다면 제거하여 중복 생성 방지
-  const oldToast = document.getElementById("gemini-usage-toast");
-  if (oldToast) oldToast.remove();
 
-  const toast = document.createElement("div");
-  toast.id = "gemini-usage-toast";
-  toast.innerText = "사용량 동기화 완료";
-  
-  // 스타일 지정 (검은 배경, 흰 텍스트, 오른쪽 하단)
-  toast.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background-color: rgba(0, 0, 0, 0.85);
-    color: #ffffff;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
-    z-index: 999999;
-    pointer-events: none;
-    opacity: 0;
-    transform: translateY(10px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  `;
-
-  document.body.appendChild(toast);
-
-  // 강제 리플로우 유도
-  toast.offsetHeight;
-
-  // 나타나기 애니메이션
-  toast.style.opacity = "1";
-  toast.style.transform = "translateY(0)";
-
-  // 2.5초 후 페이드아웃 및 삭제
-  setTimeout(() => {
-    if (toast) {
-      toast.style.opacity = "0";
-      toast.style.transform = "translateY(-10px)";
-      setTimeout(() => {
-        if (toast.parentNode) {
-          toast.remove();
-        }
-      }, 300);
-    }
-  }, 2500);
-}
 
 
 

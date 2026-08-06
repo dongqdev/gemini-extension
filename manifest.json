@@ -5,7 +5,6 @@
   "description": "제미나이(Gemini) 대화 관리 폴더, 실시간 사용량 위젯, 대화 내보내기 및 대화창 너비 제어 확장 프로그램",
   "permissions": [
     "storage",
-    "offscreen",
     "alarms"
   ],
   "host_permissions": [
