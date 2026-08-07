@@ -296,9 +296,13 @@ ${chatsText}`;
 
   function setCustomChatWidth(wVal) {
     if (popupWidthVal) popupWidthVal.innerText = wVal;
-    if (popupWidthRange && wVal.endsWith("px")) {
-      const num = parseInt(wVal.replace("px", ""), 10);
-      if (!isNaN(num)) popupWidthRange.value = num;
+    if (popupWidthRange) {
+      if (wVal.endsWith("px")) {
+        const num = parseInt(wVal.replace("px", ""), 10);
+        if (!isNaN(num)) popupWidthRange.value = num;
+      } else if (wVal === "100%") {
+        popupWidthRange.value = popupWidthRange.max || 1800;
+      }
     }
     chrome.storage.local.set({ customChatWidth: wVal });
   }
@@ -307,9 +311,13 @@ ${chatsText}`;
   chrome.storage.local.get(["customChatWidth"], (res) => {
     const w = res.customChatWidth || "960px";
     if (popupWidthVal) popupWidthVal.innerText = w;
-    if (popupWidthRange && w.endsWith("px")) {
-      const num = parseInt(w.replace("px", ""), 10);
-      if (!isNaN(num)) popupWidthRange.value = num;
+    if (popupWidthRange) {
+      if (w.endsWith("px")) {
+        const num = parseInt(w.replace("px", ""), 10);
+        if (!isNaN(num)) popupWidthRange.value = num;
+      } else if (w === "100%") {
+        popupWidthRange.value = popupWidthRange.max || 1800;
+      }
     }
   });
 

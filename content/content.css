@@ -1035,11 +1035,62 @@ ms-chat-chunk,
 ms-chat-item,
 .chat-history > div,
 .conversation-container > div,
+infinite-scroller,
+.infinite-scroller,
+.infinite-scroller > div,
+g-infinite-scroller,
+div[class*='infinite-scroller'],
 main .chat-view div {
   max-width: var(--gemini-chat-width, 960px) !important;
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box !important;
+}
+
+/* 사용자 질문 영역: 오른쪽 정렬 유지 */
+.user-query-container,
+div[class*='user-query-container'],
+user-query,
+.user-query,
+.user-query-container div,
+.user-query-container p,
+.user-query-container span,
+.user-query-container user-query,
+div[class*='user-query-container'] div,
+div[class*='user-query-container'] p,
+div[class*='user-query-container'] span,
+div[class*='user-query-container'] user-query,
+user-query div,
+user-query p,
+user-query span,
+.user-query div,
+.user-query p,
+.user-query span {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+
+/* AI(모델) 응답 영역: 왼쪽 정렬 유지 */
+.model-response-container,
+div[class*='model-response-container'],
+model-response,
+.model-response,
+.model-response-container div,
+.model-response-container p,
+.model-response-container span,
+.model-response-container model-response,
+div[class*='model-response-container'] div,
+div[class*='model-response-container'] p,
+div[class*='model-response-container'] span,
+div[class*='model-response-container'] model-response,
+model-response div,
+model-response p,
+model-response span,
+.model-response div,
+.model-response p,
+.model-response span {
+  margin-left: 0 !important;
+  margin-right: auto !important;
 }
 
 /* 첨부 사진 2 스타일: 입력창 밀착형 다크 캡슐 패널 (#gemini-chat-width-bar) */

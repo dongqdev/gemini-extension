@@ -182,6 +182,15 @@ function setupResizableSplitter() {
    ========================================== */
 function setupSidebarFolderTree() {
   const checkSidebarInterval = setInterval(() => {
+    // 📌 Gemini Spark 모드인 경우 폴더 트리를 표시하지 않고 기존 폴더 트리 제거
+    if (window.location.href.includes("/spark") || window.location.pathname.includes("/spark")) {
+      const existing = document.getElementById("gemini-sidebar-folders");
+      if (existing) {
+        existing.remove();
+      }
+      return;
+    }
+
     // 이미 사이드바에 폴더 트리가 주입된 경우 스킵
     if (document.getElementById("gemini-sidebar-folders")) return;
 
